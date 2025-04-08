@@ -5,7 +5,7 @@ import '../models/api_response.dart';
 import 'database_helper.dart';
 
 class ApiService {
-  static const String _apiKey = 'AIzaSyCE9hxzOP0uYI0YbrPNJFG1I_w-PRW9Usc';
+  static const String _apiKey = '';
   static const String _baseUrl = 'https://www.googleapis.com/youtube/v3';
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   
