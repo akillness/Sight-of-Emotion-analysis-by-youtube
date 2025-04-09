@@ -23,6 +23,7 @@ void main() async {
 class MyApp extends StatelessWidget {
   final AppDatabase database;
   
+  
   const MyApp({super.key, required this.database});
 
   // This widget is the root of your application.
