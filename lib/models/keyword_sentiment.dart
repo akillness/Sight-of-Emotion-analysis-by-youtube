@@ -11,6 +11,8 @@ enum Emotion {
   sadness,
   anger,
   surprise,
+  fear,
+  anticipation,
   neutral
 }
 

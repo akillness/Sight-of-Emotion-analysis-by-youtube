@@ -1,9 +1,9 @@
-import 'video_info.dart';
+import '../models/youtube_data.dart';
 import 'keyword_sentiment.dart';
 
 class VideoAnalysisResult {
-  final VideoInfo videoInfo;
+  final YoutubeData youtubeData;
   final List<KeywordSentiment> keywords;
 
-  VideoAnalysisResult({required this.videoInfo, required this.keywords});
+  VideoAnalysisResult({required this.youtubeData, required this.keywords});
 } 

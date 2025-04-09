@@ -3,12 +3,13 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../services/nlp_service.dart';
+import '../models/video_analysis_result.dart';
+import '../models/keyword_sentiment.dart';
 import '../models/youtube_data.dart';
 import '../widgets/charts/trends_pie_chart.dart';
-import '../widgets/charts/keyword_typography.dart';
 import '../widgets/pagination_controls.dart';
 import '../services/database_helper.dart';
-import 'sentiment_visualization_screen.dart';
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key});
@@ -27,6 +28,7 @@ bool _containsKorean(String text) {
 class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderStateMixin {
   final ApiService _apiService = ApiService();
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final NlpService _nlpService = NlpService();
   List<YoutubeData> _trends = [];
   bool _isLoading = false;
   String _searchQuery = '';
@@ -34,18 +36,41 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
   int _totalPages = 1;
   static const int _itemsPerPage = 10;
   late TabController _tabController;
+  List<VideoAnalysisResult> _currentAnalysisResults = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadTrends(); // Will now default to Korean "게임"
+    _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(_handleTabSelection);
+    _loadTrends();
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabSelection);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _handleTabSelection() {
+    // Optional: Load data only when the tab is selected if preferred
+    // if (_tabController.index == 3 && _analysisResults.isEmpty && !_isAnalysisLoading) {
+    //   _loadGamingVideoAnalysis();
+    // }
+  }
+
+  Future<void> _runAnalysis() async {
+    if (!mounted || _trends.isEmpty) {
+      setState(() => _currentAnalysisResults = []);
+      return;
+    }
+    final analysis = await _nlpService.analyzeVideoTitles(_trends);
+    if (mounted) {
+      setState(() {
+        _currentAnalysisResults = analysis;
+      });
+    }
   }
 
   Future<void> _launchYoutubeVideo(String videoId) async {
@@ -59,16 +84,20 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     setState(() => _isLoading = true);
     const defaultQuery = "게임"; // Default to Korean
     _searchQuery = defaultQuery; // Store the actual default used
+    List<YoutubeData> sortedTrends = [];
     try {
       final response = await _apiService.searchTrends(defaultQuery);
-      final sortedTrends = response.items..sort((a, b) => b.views.compareTo(a.views));
+      sortedTrends = response.items..sort((a, b) => b.views.compareTo(a.views));
       setState(() {
         _trends = sortedTrends;
         _totalPages = (_trends.length / _itemsPerPage).ceil();
         _currentPage = 1;
       });
+      await _runAnalysis();
     } catch (e) {
       print('Error loading game trends (검색: $defaultQuery): $e');
+      setState(() => _trends = []);
+      await _runAnalysis();
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -95,16 +124,20 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     print('Performing search with query: $finalQuery'); // Log the query being used
 
     setState(() => _isLoading = true);
+    List<YoutubeData> sortedTrends = [];
     try {
       final response = await _apiService.searchTrends(finalQuery);
-      final sortedTrends = response.items..sort((a, b) => b.views.compareTo(a.views));
+      sortedTrends = response.items..sort((a, b) => b.views.compareTo(a.views));
       setState(() {
         _trends = sortedTrends;
         _totalPages = (_trends.length / _itemsPerPage).ceil();
         _currentPage = 1;
       });
+      await _runAnalysis();
     } catch (e) {
       print('Error searching trends for "$finalQuery": $e');
+      setState(() => _trends = []);
+      await _runAnalysis();
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -406,6 +439,94 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildSentimentVisualizationTab() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_currentAnalysisResults.isEmpty) {
+      return const Center(child: Text('No analysis results available.'));
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16.0),
+      itemCount: _currentAnalysisResults.length,
+      itemBuilder: (context, index) {
+        final result = _currentAnalysisResults[index];
+        final item = result.youtubeData;
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16.0),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.visibility_outlined, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Text(
+                      '조회수: ${NumberFormat.compact().format(item.views)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(width: 12),
+                     Icon(Icons.thumb_up_alt_outlined, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                     Text(
+                      '좋아요: ${NumberFormat.compact().format(item.likes)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const Divider(height: 20),
+                if (result.keywords.isEmpty)
+                  const Text('키워드를 추출하지 못했습니다.')
+                else
+                  Wrap(
+                    spacing: 8.0,
+                    runSpacing: 4.0,
+                    children: result.keywords.map((kw) {
+                      Color sentimentColor;
+                      IconData sentimentIcon;
+                      switch (kw.sentiment) {
+                        case Sentiment.positive:
+                          sentimentColor = Colors.green;
+                          sentimentIcon = Icons.sentiment_satisfied_alt;
+                          break;
+                        case Sentiment.negative:
+                          sentimentColor = Colors.red;
+                           sentimentIcon = Icons.sentiment_very_dissatisfied;
+                           break;
+                        case Sentiment.neutral:
+                        default:
+                          sentimentColor = Colors.grey;
+                          sentimentIcon = Icons.sentiment_neutral;
+                          break;
+                      }
+                      return Chip(
+                        avatar: Icon(sentimentIcon, color: sentimentColor, size: 18),
+                        label: Text(
+                          '${kw.keyword} (${kw.score.toStringAsFixed(2)})',
+                          style: TextStyle(color: sentimentColor),
+                        ),
+                        backgroundColor: sentimentColor.withOpacity(0.1),
+                        side: BorderSide.none,
+                      );
+                    }).toList(),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -496,6 +617,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                   Tab(icon: Icon(Icons.table_chart_outlined), text: '데이터 테이블'),
                   Tab(icon: Icon(Icons.bar_chart_outlined), text: '차트 분석'),
                   Tab(icon: Icon(Icons.psychology_outlined), text: '키워드 시각화'),
+                  Tab(text: '감성 분석'),
                 ],
               ),
            ),
@@ -506,49 +628,9 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                 controller: _tabController,
                 children: [
                   _buildDataTable(context),
-                  SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 0),
-                    child: Column(
-                       children: [
-                         Container(
-                           height: 300,
-                           margin: const EdgeInsets.only(bottom: 16),
-                           padding: const EdgeInsets.all(16),
-                           decoration: BoxDecoration(
-                             color: Colors.white,
-                             borderRadius: BorderRadius.circular(16),
-                             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
-                           ),
-                           child: Column(
-                             crossAxisAlignment: CrossAxisAlignment.start,
-                             children: [
-                               const Text("상위 트렌드 조회수 분포", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                               const SizedBox(height: 8),
-                               Expanded(child: TrendsPieChart(trends: _trends)),
-                             ],
-                           ),
-                         ),
-                         Container(
-                            height: 300,
-                           padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                             color: Colors.white,
-                             borderRadius: BorderRadius.circular(16),
-                             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
-                           ),
-                           child: Column(
-                             crossAxisAlignment: CrossAxisAlignment.start,
-                             children: [
-                               const Text("주요 키워드 (상위 5개 영상)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                               const SizedBox(height: 8),
-                               Expanded(child: KeywordTypography(trends: _trends.take(5).toList())),
-                             ],
-                           ),
-                         ),
-                       ],
-                    ),
-                  ),
-                  const SentimentVisualizationScreen(),
+                  TrendsPieChart(trends: _trends),
+                  const Center(child: Text('키워드 네트워크 시각화 (오류로 임시 비활성화)')),
+                  _buildSentimentVisualizationTab(),
                 ],
               ),
            ),
