@@ -8,6 +8,7 @@ import '../models/video_analysis_result.dart';
 import '../models/keyword_sentiment.dart';
 import '../models/youtube_data.dart';
 import '../widgets/charts/trends_pie_chart.dart';
+import '../widgets/charts/keyword_network_graph.dart';
 import '../widgets/pagination_controls.dart';
 import '../services/database_helper.dart';
 
@@ -629,7 +630,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                 children: [
                   _buildDataTable(context),
                   TrendsPieChart(trends: _trends),
-                  const Center(child: Text('키워드 네트워크 시각화 (오류로 임시 비활성화)')),
+                  KeywordNetworkGraph(analysisResults: _currentAnalysisResults),
                   _buildSentimentVisualizationTab(),
                 ],
               ),

@@ -23,6 +23,7 @@ dependencies:
   sqlite3: ^2.3.0
   sqlite3_flutter_libs: ^0.5.21
   path_provider: ^2.1.2
+  graphview: ^1.2.0
 
 dev_dependencies:
   flutter_test:
