@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:graphview/GraphView.dart';
-import '../../models/video_analysis_result.dart';
-import '../../models/keyword_sentiment.dart';
 import 'dart:math';
+import 'package:flutter/material.dart';
+import '../../models/video_analysis_result.dart';
+
 import '../../widgets/app_theme.dart';
 
 class KeywordNetworkGraph extends StatefulWidget {
@@ -15,21 +14,25 @@ class KeywordNetworkGraph extends StatefulWidget {
 }
 
 class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
-  final Graph graph = Graph();
-  late Algorithm builder;
+  // Maximum number of nodes to display to prevent memory issues
+  static const int maxNodes = 30;
+  static const int minKeywordFreq = 2; // Minimum frequency required to display a keyword
 
   // 키워드에 관련된 맵
-  final Map<String, Node> keywordNodes = {};
-  final Map<String, double> keywordScores = {};
-  final Map<String, int> keywordFrequency = {};
-  final Map<String, Set<String>> coOccurrences = {};
-  final Map<String, int> edgeWeights = {};
-  final Map<Edge, double> edgeScores = {};
-  final Map<String, int> connectionCounts = {};
+  Map<String, int> keywordFrequency = {};
+  Map<String, Set<String>> coOccurrences = {};
+  Map<String, double> keywordScores = {};
+  Map<String, int> connectionCounts = {};
   
   // 가장 많은 연결을 가진 중심 노드
   String? _centralNode;
   bool _isGraphInitialized = false;
+  
+  // Most important keywords
+  List<String> topKeywords = [];
+
+  // 동시 출현 횟수 저장 (강도 계산용)
+  Map<String, Map<String, int>> coOccurrenceCounts = {};
 
   @override
   void initState() {
@@ -45,166 +48,93 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
     }
   }
 
-  // 엣지 스코어에 따른 거리 계산 함수
-  double _getDistanceByScore(double score) {
-    // 점수가 높을수록 거리가 가깝게 (작게)
-    score = score.abs().clamp(0.1, 1.0);
-    // 기본 거리 계산: 점수가 높을수록 거리가 가깝게 (반비례)
-    return 300 / score; 
-  }
-
-  // 연결 수에 따른 노드 색상 계산
-  Color _getNodeColor(int connections) {
-    // 연결이 많을수록 더 진한 색상으로
-    final maxConnectionCount = connectionCounts.values.isEmpty 
-        ? 1 
-        : connectionCounts.values.reduce(max);
-    
-    // 연결 수가 많을수록 1에 가까워지는 비율 계산
-    final ratio = connections / maxConnectionCount;
-    
-    // AppTheme.primaryColor를 기본 색상으로 사용하고 연결이 적을수록 옅어짐
-    return Color.lerp(
-      AppTheme.primaryColor.withOpacity(0.3),
-      AppTheme.primaryColor,
-      ratio
-    ) ?? AppTheme.primaryColor;
-  }
-
   void _buildGraph() {
     if (widget.analysisResults.isEmpty) {
-      _isGraphInitialized = false;
+      setState(() {
+        _isGraphInitialized = false;
+        topKeywords = [];
+      });
       return;
     }
 
     // 기존 데이터 초기화
-    graph.nodes.clear();
-    graph.edges.clear();
-    keywordNodes.clear();
-    keywordScores.clear();
-    keywordFrequency.clear();
-    coOccurrences.clear();
-    edgeWeights.clear();
-    edgeScores.clear();
-    connectionCounts.clear();
+    keywordFrequency = {};
+    coOccurrences = {};
+    keywordScores = {};
+    connectionCounts = {};
+    _centralNode = null;
+    topKeywords = [];
+    coOccurrenceCounts = {}; // 동시 출현 횟수 맵 초기화
 
-    // Step 1: 키워드, 점수, 빈도 수집
+    // Step 1: 키워드, 점수, 빈도 수집 및 필터링
     for (var result in widget.analysisResults) {
       Set<String> keywordsInVideo = {};
       for (var ks in result.keywords) {
-        final keyword = ks.keyword; // 소문자로 변환하지 않고 원래 형태 유지
+        final keyword = ks.keyword; 
         keywordsInVideo.add(keyword);
-        keywordNodes.putIfAbsent(keyword, () => Node.Id(keyword));
         
         // 점수 저장 (나중에 평균 계산)
         keywordScores[keyword] = (keywordScores[keyword] ?? 0.0) + ks.score; 
         keywordFrequency[keyword] = (keywordFrequency[keyword] ?? 0) + 1;
       }
+    }
 
-      // Step 2: 동시 출현(co-occurrence) 및 가중치 추적
+    // 빈도가 낮은 키워드 필터링 (메모리 사용량 감소)
+    final filteredKeywords = keywordFrequency.entries
+        .where((entry) => entry.value >= minKeywordFreq)
+        .map((e) => e.key)
+        .toList();
+
+    // Step 2: 동시 출현(co-occurrence) 및 가중치(횟수) 추적
+    for (var result in widget.analysisResults) {
+      Set<String> keywordsInVideo = result.keywords
+          .map((ks) => ks.keyword)
+          .where((kw) => filteredKeywords.contains(kw))
+          .toSet();
+      
       List<String> keywordsList = keywordsInVideo.toList();
       for (int i = 0; i < keywordsList.length; i++) {
         for (int j = i + 1; j < keywordsList.length; j++) {
           String kw1 = keywordsList[i];
           String kw2 = keywordsList[j];
-          List<String> edgePair = [kw1, kw2];
-          edgePair.sort(); 
-          String edgeKey = edgePair.join('--'); 
           
           // 동시 출현 관계 추가
           coOccurrences.putIfAbsent(kw1, () => {}).add(kw2);
           coOccurrences.putIfAbsent(kw2, () => {}).add(kw1);
-          
-          // 엣지 가중치 증가
-          edgeWeights[edgeKey] = (edgeWeights[edgeKey] ?? 0) + 1; 
+
+          // 동시 출현 횟수 증가
+          coOccurrenceCounts.putIfAbsent(kw1, () => {})[kw2] = 
+              (coOccurrenceCounts[kw1]![kw2] ?? 0) + 1;
+          coOccurrenceCounts.putIfAbsent(kw2, () => {})[kw1] = 
+              (coOccurrenceCounts[kw2]![kw1] ?? 0) + 1;
         }
       }
     }
 
-    // Step 3: 평균 점수 계산
-    keywordScores.forEach((key, value) {
-      int freq = keywordFrequency[key] ?? 1;
-      keywordScores[key] = (freq == 0) ? 0.0 : value / freq;
-    });
+    // Step 3: 각 키워드의 연결 수 계산 (필터링된 키워드만)
+    for (var keyword in filteredKeywords) {
+      Set<String> connectedKeywords = coOccurrences[keyword] ?? {};
+      // 필터링된 키워드에 있는 연결만 카운트
+      connectionCounts[keyword] = connectedKeywords.where((k) => filteredKeywords.contains(k)).length;
+    }
 
-    // Step 4: 각 키워드의 연결 수 계산
-    coOccurrences.forEach((keyword, connectedKeywords) {
-      connectionCounts[keyword] = connectedKeywords.length;
-    });
-
-    // Step 5: 가장 많은 연결을 가진 중심 노드 찾기
+    // Step 4: 가장 많은 연결을 가진 중심 노드 찾기
     if (connectionCounts.isNotEmpty) {
       _centralNode = connectionCounts.entries
           .reduce((a, b) => a.value > b.value ? a : b)
           .key;
-    }
-
-    // Step 6: 중심 노드가 있는 경우 해당 노드와 연결된 노드만 그래프에 추가
-    if (_centralNode != null) {
-      // 중심 노드 추가
-      final centralNodeObj = keywordNodes[_centralNode]!;
-      graph.addNode(centralNodeObj);
+          
+      // Get top connected keywords (based on connection count)
+      var keywordEntries = connectionCounts.entries
+          .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
       
-      // 중심 노드와 연결된 노드들만 추가
-      final connectedKeywords = coOccurrences[_centralNode] ?? {};
-      for (var connectedKeyword in connectedKeywords) {
-        if (keywordNodes.containsKey(connectedKeyword)) {
-          graph.addNode(keywordNodes[connectedKeyword]!);
-          
-          // 엣지 추가
-          List<String> pair = [_centralNode!, connectedKeyword];
-          pair.sort();
-          String edgeKey = pair.join('--');
-          
-          Edge edge = graph.addEdge(
-            centralNodeObj, 
-            keywordNodes[connectedKeyword]!
-          );
-          
-          // 엣지 점수 계산 (두 키워드의 평균 점수)
-          double edgeScore = (keywordScores[_centralNode]! + keywordScores[connectedKeyword]!) / 2;
-          edgeScores[edge] = edgeScore;
-        }
-      }
-      
-      // 추가된 노드들 간의 상호 연결 추가
-      for (var keywordA in connectedKeywords) {
-        if (!keywordNodes.containsKey(keywordA)) continue;
-        
-        for (var keywordB in connectedKeywords) {
-          if (keywordA == keywordB || !keywordNodes.containsKey(keywordB)) continue;
-          
-          // 두 키워드가 동시 출현하는지 확인
-          if (coOccurrences[keywordA]?.contains(keywordB) == true) {
-            List<String> pair = [keywordA, keywordB];
-            pair.sort();
-            String edgeKey = pair.join('--');
-            
-            // 이미 추가된 엣지는 건너뛰기
-            if (edgeScores.values.length >= 
-                graph.nodes.length * (graph.nodes.length - 1) / 2) {
-              continue;
-            }
-            
-            // 엣지 추가
-            Edge edge = graph.addEdge(
-              keywordNodes[keywordA]!, 
-              keywordNodes[keywordB]!
-            );
-            
-            // 엣지 점수 계산
-            double edgeScore = (keywordScores[keywordA]! + keywordScores[keywordB]!) / 2;
-            edgeScores[edge] = edgeScore;
-          }
-        }
-      }
+      // Limit to MAX_NODES
+      topKeywords = keywordEntries
+          .take(maxNodes)
+          .map((e) => e.key)
+          .toList();
     }
-
-    // Step 7: 그래프 레이아웃 알고리즘 설정
-    // FruchtermanReingoldAlgorithm을 사용하되 적절한 매개변수 사용
-    builder = FruchtermanReingoldAlgorithm(
-      iterations: 1000,
-    );
 
     _isGraphInitialized = true;
     if (mounted) setState(() {});
@@ -212,7 +142,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isGraphInitialized || graph.nodes.isEmpty) {
+    if (!_isGraphInitialized || topKeywords.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -220,7 +150,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
             Icon(
               Icons.bubble_chart,
               size: 64,
-              color: AppTheme.primaryColor.withOpacity(0.5),
+              color: AppTheme.primaryColor.withAlpha(128),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -235,6 +165,9 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
         ),
       );
     }
+    
+    // Find max connection count for scaling
+    final maxConnections = connectionCounts.values.reduce((a, b) => a > b ? a : b).toDouble();
 
     return Card(
       elevation: 4,
@@ -243,132 +176,55 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(left: 16.0, top: 8.0, bottom: 16.0),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.hub,
-                    color: AppTheme.primaryColor,
-                    size: 24,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    '키워드 네트워크 분석',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textColor,
-                    ),
-                  ),
-                ],
+            const Text(
+              "키워드 연결망",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textColor,
               ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              "주요 키워드: '${_centralNode ?? '-'}' (${topKeywords.length}개 노드)",
+              style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.textColor.withAlpha(204),
+              ),
+            ),
+            const SizedBox(height: 16),
             Expanded(
-              child: InteractiveViewer(
-                constrained: false,
-                boundaryMargin: const EdgeInsets.all(100),
-                minScale: 0.1,
-                maxScale: 2.0,
-                child: GraphView(
-                  graph: graph,
-                  algorithm: builder,
-                  paint: Paint()
-                    ..color = AppTheme.primaryColor.withOpacity(0.7)
-                    ..strokeWidth = 1.5,
-                  builder: (Node node) {
-                    String keyword = node.key?.value as String? ?? '';
-                    final connections = connectionCounts[keyword] ?? 0;
-                    
-                    // 연결 수에 따라 노드 크기 결정 (최소 사이즈 보장)
-                    final nodeRadius = 20.0 + (connections * 3.0);
-                    final Color nodeColor = _getNodeColor(connections);
-                    
-                    // 중심 노드인지 확인
-                    final isCentralNode = keyword == _centralNode;
-                    
-                    return Container(
-                      width: nodeRadius * 2,
-                      height: nodeRadius * 2,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return InteractiveViewer(
+                    boundaryMargin: const EdgeInsets.all(20),
+                    minScale: 0.5,
+                    maxScale: 2.0,
+                    child: Container(
+                      width: constraints.maxWidth,
+                      height: constraints.maxHeight,
                       decoration: BoxDecoration(
-                        color: nodeColor.withOpacity(0.9),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: nodeColor.withOpacity(0.5),
-                            blurRadius: 8,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                        border: Border.all(
-                          color: isCentralNode 
-                            ? Colors.white 
-                            : nodeColor,
-                          width: isCentralNode ? 2.0 : 1.0,
-                        ),
+                        color: AppTheme.backgroundColor.withAlpha(51),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Center(
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // 텍스트
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Padding(
-                                padding: const EdgeInsets.all(4.0),
-                                child: Text(
-                                  keyword,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: isCentralNode 
-                                      ? FontWeight.bold 
-                                      : FontWeight.w500,
-                                    shadows: [
-                                      Shadow(
-                                        offset: const Offset(0, 1),
-                                        blurRadius: 3,
-                                        color: Colors.black.withOpacity(0.5),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            
-                            // 연결 수를 표시하는 작은 배지 (오른쪽 상단)
-                            if (connections > 0)
-                              Positioned(
-                                top: 0,
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 1),
-                                  ),
-                                  child: Text(
-                                    connections.toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
+                      child: CustomPaint(
+                        painter: KeywordNetworkPainter(
+                          keywords: topKeywords,
+                          centralNode: _centralNode,
+                          connectionCounts: connectionCounts,
+                          coOccurrences: coOccurrences,
+                          coOccurrenceCounts: coOccurrenceCounts,
+                          maxConnections: maxConnections,
                         ),
+                        child: Container(), // Empty container for CustomPaint to fill
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -376,4 +232,239 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
       ),
     );
   }
+}
+
+class KeywordNetworkPainter extends CustomPainter {
+  final List<String> keywords;
+  final String? centralNode;
+  final Map<String, int> connectionCounts;
+  final Map<String, Set<String>> coOccurrences;
+  final Map<String, Map<String, int>> coOccurrenceCounts;
+  final double maxConnections;
+  
+  // Cache for node positions
+  final Map<String, Offset> nodePositions = {};
+  
+  KeywordNetworkPainter({
+    required this.keywords,
+    required this.centralNode,
+    required this.connectionCounts,
+    required this.coOccurrences,
+    required this.coOccurrenceCounts,
+    required this.maxConnections,
+  });
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (keywords.isEmpty) return;
+    
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width < size.height ? size.width * 0.4 : size.height * 0.4;
+    
+    // Position central node at center
+    if (centralNode != null) {
+      nodePositions[centralNode!] = center;
+    }
+    
+    // Calculate positions for other nodes in a spiral pattern
+    final otherKeywords = keywords.where((k) => k != centralNode).toList();
+    
+    // Position nodes in a force-directed-like layout
+    _positionNodesInLayout(otherKeywords, center, radius, size);
+    
+    // Draw edges
+    final edgePaint = Paint()
+      ..color = Colors.grey.withAlpha(77)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    
+    // Draw edges between nodes
+    for (var i = 0; i < keywords.length; i++) {
+      final keyword1 = keywords[i];
+      final pos1 = nodePositions[keyword1];
+      if (pos1 == null) continue;
+      
+      for (var j = i + 1; j < keywords.length; j++) {
+        final keyword2 = keywords[j];
+        final pos2 = nodePositions[keyword2];
+        if (pos2 == null) continue;
+        
+        // Check if there's a connection between these keywords
+        if (coOccurrences[keyword1]?.contains(keyword2) == true) {
+          canvas.drawLine(pos1, pos2, edgePaint);
+        }
+      }
+    }
+    
+    // Draw nodes
+    for (var keyword in keywords) {
+      final nodePos = nodePositions[keyword];
+      if (nodePos == null) continue;
+      
+      final connections = connectionCounts[keyword] ?? 0;
+      final isCentral = keyword == centralNode;
+      
+      // Calculate node size based on connections
+      final nodeRadius = 10.0 + (connections / maxConnections) * 20.0;
+      
+      // Node color based on connections
+      final nodeColor = isCentral 
+          ? Colors.red 
+          : Color.lerp(
+              AppTheme.primaryColor.withAlpha(102),
+              AppTheme.primaryColor,
+              connections / maxConnections
+            ) ?? AppTheme.primaryColor;
+      
+      // Draw node
+      final nodePaint = Paint()
+        ..color = nodeColor
+        ..style = PaintingStyle.fill;
+      
+      canvas.drawCircle(nodePos, nodeRadius, nodePaint);
+      
+      // Draw node border
+      final borderPaint = Paint()
+        ..color = isCentral ? Colors.white : nodeColor.withAlpha(204)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isCentral ? 2.0 : 1.0;
+      
+      canvas.drawCircle(nodePos, nodeRadius, borderPaint);
+      
+      // Draw keyword text
+      final textStyle = TextStyle(
+        color: Colors.white,
+        fontSize: isCentral ? 14.0 : 12.0,
+        fontWeight: isCentral ? FontWeight.bold : FontWeight.normal,
+      );
+      
+      final textSpan = TextSpan(
+        text: keyword,
+        style: textStyle,
+      );
+      
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      );
+      
+      textPainter.layout();
+      
+      // Position text in center of node
+      final textOffset = Offset(
+        nodePos.dx - textPainter.width / 2,
+        nodePos.dy - textPainter.height / 2,
+      );
+      
+      textPainter.paint(canvas, textOffset);
+    }
+  }
+  
+  void _positionNodesInLayout(List<String> otherKeywords, Offset center, double radius, Size size) {
+    // Use a simple physics-based layout for positioning
+    final random = Random(42); // Fixed seed for reproducibility
+    
+    // Initial random positions for non-central nodes
+    for (var keyword in otherKeywords) {
+      // Random angle
+      final angle = random.nextDouble() * 2 * pi;
+      // Random distance from center (within radius)
+      final distance = random.nextDouble() * radius;
+      
+      // Convert polar to Cartesian coordinates
+      final x = center.dx + distance * cos(angle);
+      final y = center.dy + distance * sin(angle);
+      
+      nodePositions[keyword] = Offset(x, y);
+    }
+    
+    // Simple force-directed algorithm
+    const iterations = 50; // Number of iterations for force simulation
+    const double repulsionConstant = 30.0; // 반발력 상수
+    const double attractionBaseConstant = 0.01; // 기본 인력 상수 (조정 필요)
+    const double attractionDistanceFactor = 10.0; // 거리에 따른 인력 약화/강화 계수 (조정 필요)
+
+    for (var i = 0; i < iterations; i++) {
+      final forces = <String, Offset>{};
+      for (var keyword in keywords) { forces[keyword] = Offset.zero; }
+
+      // Repulsive forces
+      for (var j = 0; j < keywords.length; j++) {
+        final keyword1 = keywords[j];
+        final pos1 = nodePositions[keyword1];
+        if (pos1 == null) continue;
+        
+        for (var k = j + 1; k < keywords.length; k++) {
+          final keyword2 = keywords[k];
+          final pos2 = nodePositions[keyword2];
+          if (pos2 == null) continue;
+          
+          final delta = pos2 - pos1;
+          final distance = delta.distance;
+          
+          if (distance < 0.1) continue; // Avoid division by zero
+          
+          // Repulsive force (inverse square law)
+          final repulsiveForce = delta / distance * (repulsionConstant / distance);
+          
+          forces[keyword1] = (forces[keyword1] ?? Offset.zero) - repulsiveForce;
+          forces[keyword2] = (forces[keyword2] ?? Offset.zero) + repulsiveForce;
+        }
+      }
+      
+      // Attractive forces (modified based on coOccurrenceCounts)
+      for (var j = 0; j < keywords.length; j++) {
+        final keyword1 = keywords[j];
+        final pos1 = nodePositions[keyword1];
+        if (pos1 == null) continue;
+        
+        for (var k = j + 1; k < keywords.length; k++) {
+          final keyword2 = keywords[k];
+          final pos2 = nodePositions[keyword2];
+          if (pos2 == null) continue;
+          
+          if (coOccurrences[keyword1]?.contains(keyword2) == true) {
+            final delta = pos2 - pos1;
+            final distance = delta.distance;
+            if (distance < 0.1) continue; 
+
+            // 동시 출현 횟수 가져오기 (기본값 1)
+            final count = coOccurrenceCounts[keyword1]?[keyword2] ?? 1;
+            
+            // 인력 계산: 거리가 멀수록 강해지고, 횟수(count)가 클수록 약해짐
+            // (거리에 비례, 횟수에 반비례. 상수를 조절하여 효과 조절)
+            final attractionMagnitude = attractionBaseConstant * (distance / attractionDistanceFactor) / count;
+            final attractiveForce = delta / distance * attractionMagnitude;
+            
+            forces[keyword1] = (forces[keyword1] ?? Offset.zero) + attractiveForce;
+            forces[keyword2] = (forces[keyword2] ?? Offset.zero) - attractiveForce;
+          }
+        }
+      }
+      
+      // Update positions based on forces
+      for (var keyword in keywords) {
+        if (keyword == centralNode) continue; // Keep central node fixed
+        
+        final pos = nodePositions[keyword];
+        final force = forces[keyword];
+        if (pos == null || force == null) continue;
+        
+        // Apply force with damping
+        final damping = 1.0 - (i / iterations); // Reduce movement over iterations
+        var newPos = pos + force * damping;
+        
+        // Keep nodes within bounds
+        newPos = Offset(
+          newPos.dx.clamp(20.0, size.width - 20.0),
+          newPos.dy.clamp(20.0, size.height - 20.0),
+        );
+        
+        nodePositions[keyword] = newPos;
+      }
+    }
+  }
+  
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 } 

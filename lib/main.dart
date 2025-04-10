@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'YouTube 트렌드 분석',
+      title: 'YouTube 키워드 트렌드 분석(게임)',
       theme: AppTheme.lightTheme,
       home: const TrendsScreen(),
     );

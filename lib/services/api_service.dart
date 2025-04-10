@@ -3,16 +3,19 @@ import 'package:http/http.dart' as http;
 import '../models/youtube_data.dart';
 import '../models/api_response.dart';
 import 'database_helper.dart';
+import 'package:flutter/foundation.dart';
+import '../config/api_keys.dart';
 
 class ApiService {
-  static const String _apiKey = '';
-  static const String _baseUrl = 'https://www.googleapis.com/youtube/v3';
+  static const String _youtubeApiBaseUrl = 'https://www.googleapis.com/youtube/v3';
+  static const String _regionCode = 'KR';
+  static const int _maxResults = 20;
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   
   Future<ApiResponse> getTrends() async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/videos?part=snippet,statistics&chart=mostPopular&regionCode=KR&maxResults=50&key=$_apiKey'),
+        Uri.parse('$_youtubeApiBaseUrl/videos?part=snippet,statistics&chart=mostPopular&regionCode=$_regionCode&maxResults=$_maxResults&key=$youtubeApiKey'),
       );
 
       if (response.statusCode == 200) {
@@ -57,7 +60,10 @@ class ApiService {
   }
   
   Future<Map<String, dynamic>> getKeywordAnalysis() async {
-    return await _dbHelper.getKeywordTrends();
+    print('ApiService: Fetching keyword analysis from database...');
+    final analysisData = await _dbHelper.getKeywordTrends();
+    print('ApiService: Keyword analysis data received: $analysisData');
+    return analysisData;
   }
   
   Future<List<Map<String, dynamic>>> getTopTrends({int limit = 10}) async {
@@ -71,57 +77,97 @@ class ApiService {
 
   /// 검색 쿼리를 사용하여 비디오를 검색하고 세부 정보를 가져오는 내부 메서드
   Future<ApiResponse> _fetchVideosBySearch(String query) async {
+    if (kDebugMode) {
+      print('ApiService: _fetchVideosBySearch started with query: "$query", maxResults: $_maxResults');
+    }
+    final searchUrl = Uri.parse(
+      '$_youtubeApiBaseUrl/search?part=snippet&q=$query&type=video&regionCode=$_regionCode&maxResults=$_maxResults&key=$youtubeApiKey'
+    );
+
+    if (kDebugMode) {
+      print('ApiService: Calling YouTube Search API: $searchUrl');
+    }
+
     try {
-      final searchResponse = await http.get(
-        Uri.parse('$_baseUrl/search?part=snippet&q=$query&type=video&regionCode=KR&maxResults=50&key=$_apiKey'),
-      );
-
-      if (searchResponse.statusCode != 200) {
-        print('Error searching trends: ${searchResponse.statusCode}');
-        return _emptyResponse();
+      final searchResponse = await http.get(searchUrl);
+      if (kDebugMode) {
+          print('ApiService: YouTube Search API status: ${searchResponse.statusCode}');
       }
 
-      final searchData = json.decode(searchResponse.body);
-      final videoIds = (searchData['items'] as List)
-          .map((item) => item['id']['videoId'])
-          .join(',');
-
-      if (videoIds.isEmpty) {
-        return _emptyResponse();
-      }
-
-      final videosResponse = await http.get(
-        Uri.parse('$_baseUrl/videos?part=snippet,statistics&id=$videoIds&key=$_apiKey'),
-      );
-
-      if (videosResponse.statusCode == 200) {
-        final videosData = json.decode(videosResponse.body);
-        final items = (videosData['items'] as List)
-            .map((item) => YoutubeData.fromVideoItem(item))
+      if (searchResponse.statusCode == 200) {
+        final searchData = json.decode(searchResponse.body);
+        final List<dynamic> searchItems = searchData['items'] ?? [];
+        
+        final videoIds = searchItems
+            .map((item) => item['id']?['videoId'] as String?)
+            .where((id) => id != null)
+            .cast<String>()
             .toList();
-            
-        // Extract keywords asynchronously
-        for (final item in items) {
-          await item.extractKeywordsFromTitle();
+
+        if (kDebugMode) {
+            print('ApiService: Found ${videoIds.length} video IDs: ${videoIds.join(',')}');
         }
-            
-        // 데이터베이스에 저장
-        for (final item in items) {
-          await _dbHelper.insertTrend(item);
+
+        if (videoIds.isEmpty) {
+          if (kDebugMode) {
+              print('ApiService: No video IDs found for query "$query".');
+          }
+          return _emptyResponse();
         }
-            
-        return ApiResponse(
-          items: items,
-          total: items.length,
-          currentPage: 1,
-          totalPages: 1
+
+        final videosUrl = Uri.parse(
+          '$_youtubeApiBaseUrl/videos?part=snippet,statistics&id=${videoIds.join(',')}&key=$youtubeApiKey'
         );
+        if (kDebugMode) {
+            print('ApiService: Calling YouTube Videos API: $videosUrl');
+        }
+        final videosResponse = await http.get(videosUrl);
+         if (kDebugMode) {
+            print('ApiService: YouTube Videos API status: ${videosResponse.statusCode}');
+         }
+
+        if (videosResponse.statusCode == 200) {
+          final videosData = json.decode(videosResponse.body);
+          final List<dynamic> videoItems = videosData['items'] ?? [];
+           if (kDebugMode) {
+              print('ApiService: Processing ${videoItems.length} video items.');
+           }
+          final items = videoItems.map((item) => YoutubeData.fromVideoItem(item)).toList();
+            
+          // Extract keywords asynchronously
+          for (final item in items) {
+            await item.extractKeywordsFromTitle();
+          }
+            
+          // 데이터베이스에 저장
+          print('ApiService: Saving ${items.length} items to database.');
+          for (final item in items) {
+            await _dbHelper.insertTrend(item);
+          }
+          print('ApiService: Finished saving items.');
+            
+          return ApiResponse(
+            items: items,
+            total: items.length,
+            currentPage: 1,
+            totalPages: 1
+          );
+        } else {
+          if (kDebugMode) {
+              print('ApiService: Failed to fetch video details. Status: ${videosResponse.statusCode}, Body: ${videosResponse.body}');
+          }
+          throw Exception('Failed to fetch video details');
+        }
       } else {
-        print('Error fetching video details: ${videosResponse.statusCode}');
-        return _emptyResponse();
+        if (kDebugMode) {
+            print('ApiService: Failed to search videos. Status: ${searchResponse.statusCode}, Body: ${searchResponse.body}');
+        }
+        throw Exception('Failed to search videos');
       }
     } catch (e) {
-      print('Error searching trends: $e');
+      if (kDebugMode) {
+        print('ApiService: Error during YouTube API call: $e');
+      }
       return _emptyResponse();
     }
   }
@@ -134,5 +180,17 @@ class ApiService {
       currentPage: 1,
       totalPages: 1
     );
+  }
+
+  Future<void> saveVideosToDatabase(List<YoutubeData> videos) async {
+    if (kDebugMode) {
+      print('ApiService: Saving ${videos.length} items to database.');
+    }
+    for (final video in videos) {
+      await _dbHelper.insertTrend(video);
+    }
+    if (kDebugMode) {
+      print('ApiService: Finished saving items.');
+    }
   }
 } 

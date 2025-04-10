@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:math';
 import '../services/api_service.dart';
 import '../services/nlp_service.dart';
 import '../models/video_analysis_result.dart';
@@ -11,6 +12,9 @@ import '../widgets/charts/keyword_network_graph.dart';
 import '../widgets/pagination_controls.dart';
 import '../services/database_helper.dart';
 import '../widgets/app_theme.dart';
+
+// 추가: 감성 정렬 타입 정의
+enum SentimentSortType { all, positive, negative, neutral }
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key});
@@ -38,6 +42,9 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
   static const int _itemsPerPage = 10;
   late TabController _tabController;
   List<VideoAnalysisResult> _currentAnalysisResults = [];
+  
+  // 추가: 감성 정렬 상태 변수
+  SentimentSortType _selectedSentimentSort = SentimentSortType.all;
 
   @override
   void initState() {
@@ -409,23 +416,124 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     }
   }
 
+  // Helper function to get the max score for a specific sentiment in a result
+  double _getMaxSentimentScore(VideoAnalysisResult result, Sentiment targetSentiment) {
+    double maxScore = 0.0; 
+    for (var kw in result.keywords) {
+      if (kw.sentiment == targetSentiment) {
+        maxScore = max(maxScore, kw.score);
+      }
+    }
+    return maxScore;
+  }
+
   Widget _buildAnalysisTab() {
-    return _currentAnalysisResults.isEmpty
-        ? const Center(
-            child: Text(
-              '분석 데이터가 없습니다.',
-              style: TextStyle(color: AppTheme.textColor),
-            ),
-          )
-        : GridView.count(
-            crossAxisCount: 2,
+    if (_currentAnalysisResults.isEmpty) {
+      return const Center(
+        child: Text(
+          '분석 데이터가 없습니다.',
+          style: TextStyle(color: AppTheme.textColor),
+        ),
+      );
+    }
+    
+    // Limit the number of results
+    final baseResults = _currentAnalysisResults.take(20).toList();
+
+    // 필터링 및 정렬된 결과 리스트 계산
+    List<VideoAnalysisResult> filteredAndSortedResults;
+    if (_selectedSentimentSort == SentimentSortType.all) {
+      // 'all' 선택 시 조회수 기준으로 정렬
+      filteredAndSortedResults = List.from(baseResults)
+        ..sort((a, b) => b.youtubeData.views.compareTo(a.youtubeData.views));
+    } else {
+      // 특정 감성 타입 선택 시 필터링 및 조회수 기준 정렬
+      Sentiment targetSentiment;
+      switch (_selectedSentimentSort) {
+        case SentimentSortType.positive: targetSentiment = Sentiment.positive; break;
+        case SentimentSortType.negative: targetSentiment = Sentiment.negative; break;
+        case SentimentSortType.neutral: targetSentiment = Sentiment.neutral; break;
+        default: targetSentiment = Sentiment.neutral; // Should not happen
+      }
+      
+      filteredAndSortedResults = baseResults.where((result) {
+        // Check if the video contains at least one keyword with the target sentiment
+        return result.keywords.any((kw) => kw.sentiment == targetSentiment);
+      }).toList()
+        // Sort by the maximum score of the target sentiment (descending)
+        ..sort((a, b) {
+            double scoreA = _getMaxSentimentScore(a, targetSentiment);
+            double scoreB = _getMaxSentimentScore(b, targetSentiment);
+            // If scores are equal, fall back to view count as a secondary sort
+            int scoreComparison = scoreB.compareTo(scoreA);
+            if (scoreComparison == 0) {
+                return b.youtubeData.views.compareTo(a.youtubeData.views);
+            }
+            return scoreComparison;
+        });
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end, // 드롭다운을 오른쪽으로
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                decoration: BoxDecoration(
+                  color: AppTheme.cardColor.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<SentimentSortType>(
+                    value: _selectedSentimentSort,
+                    dropdownColor: AppTheme.cardColor, // 드롭다운 메뉴 배경색
+                    style: const TextStyle(color: AppTheme.textColor, fontSize: 14), // 드롭다운 텍스트 스타일
+                    icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primaryColor),
+                    onChanged: (SentimentSortType? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _selectedSentimentSort = newValue;
+                        });
+                      }
+                    },
+                    items: SentimentSortType.values
+                        .map<DropdownMenuItem<SentimentSortType>>((SentimentSortType value) {
+                      return DropdownMenuItem<SentimentSortType>(
+                        value: value,
+                        child: Row(
+                          children: [
+                            Icon(
+                              value == SentimentSortType.positive ? Icons.thumb_up
+                              : value == SentimentSortType.negative ? Icons.thumb_down
+                              : value == SentimentSortType.neutral ? Icons.thumbs_up_down
+                              : Icons.list,
+                              color: _getSentimentColorForSort(value),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(value.toString().split('.').last.capitalize()),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: GridView.count(
+            crossAxisCount: 2, 
+            childAspectRatio: 1.0,
             children: [
               Card(
                 elevation: 4,
                 margin: const EdgeInsets.all(16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 color: AppTheme.cardColor,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -433,56 +541,97 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '감정 분석',
+                        '감정 분석 결과', // 제목 변경
                         style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textColor,
-                        ),
+                          fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textColor),
                       ),
                       const SizedBox(height: 16),
                       Expanded(
-                        child: ListView.builder(
-                          itemCount: _currentAnalysisResults.length,
-                          itemBuilder: (context, index) {
-                            final result = _currentAnalysisResults[index];
-                            return ListTile(
-                              title: Text(
-                                result.youtubeData.title,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: AppTheme.textColor,
+                        child: filteredAndSortedResults.isEmpty
+                        ? Center(
+                            child: Text(
+                              '${_selectedSentimentSort.toString().split('.').last.capitalize()} 감성의 비디오가 없습니다.', 
+                              style: const TextStyle(color: AppTheme.textColor, fontSize: 14)
+                            )
+                          )
+                        : ListView.builder(
+                            // itemCount는 필터링된 리스트 길이를 사용
+                            itemCount: filteredAndSortedResults.length, 
+                            itemBuilder: (context, index) {
+                              // 필터링/정렬된 결과 사용
+                              final result = filteredAndSortedResults[index]; 
+                              final youtubeData = result.youtubeData;
+                              
+                              // 대표 감정 계산 (이미 필터링 시 사용했으나 아이콘 표시 위해 유지)
+                              int positiveCount = 0, negativeCount = 0, neutralCount = 0;
+                              for (var kw in result.keywords) {
+                                switch (kw.sentiment) {
+                                  case Sentiment.positive: positiveCount++; break;
+                                  case Sentiment.negative: negativeCount++; break;
+                                  case Sentiment.neutral: neutralCount++; break;
+                                }
+                              }
+                              final overallSentiment = (positiveCount > negativeCount && positiveCount > neutralCount)
+                                  ? Sentiment.positive
+                                  : (negativeCount > positiveCount && negativeCount > neutralCount)
+                                      ? Sentiment.negative
+                                      : Sentiment.neutral;
+                              
+                              return Card(
+                                elevation: 2,
+                                margin: const EdgeInsets.only(bottom: 8),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Wrap(
-                                spacing: 4,
-                                children: result.keywords.map((k) {
-                                  final color = _getSentimentColor(k.sentiment);
-                                  return Container(
-                                    margin: const EdgeInsets.only(top: 4),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  leading: Container( // 대표 감정 아이콘
+                                    width: 36, height: 36,
                                     decoration: BoxDecoration(
-                                      color: color.withOpacity(0.2),
+                                      color: _getSentimentColor(overallSentiment).withOpacity(0.2),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Text(
-                                      k.keyword,
-                                      style: TextStyle(
-                                        color: color,
-                                        fontSize: 12,
-                                      ),
+                                    child: Center(child: Icon(
+                                      overallSentiment == Sentiment.positive ? Icons.thumb_up
+                                      : overallSentiment == Sentiment.negative ? Icons.thumb_down
+                                      : Icons.thumbs_up_down,
+                                      color: _getSentimentColor(overallSentiment), size: 18)
                                     ),
-                                  );
-                                }).toList(),
-                              ),
-                            );
-                          },
-                        ),
+                                  ),
+                                  title: Text( // 비디오 제목
+                                    youtubeData.title.length > 30 ? '${youtubeData.title.substring(0, 30)}...' : youtubeData.title,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textColor),
+                                  ),
+                                  subtitle: result.keywords.isEmpty // 필터링 없이 원래 키워드 표시
+                                    ? Text('키워드 없음', style: TextStyle(fontSize: 10, color: AppTheme.textColor.withOpacity(0.7)))
+                                    : SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children: [
+                                            // 필터링 없이 비디오의 원래 키워드 표시 (최대 5개)
+                                            for (var kw in result.keywords.take(5)) 
+                                              Padding(
+                                                padding: const EdgeInsets.only(right: 4),
+                                                child: Chip(
+                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  visualDensity: VisualDensity.compact,
+                                                  label: Text(kw.keyword, style: TextStyle(fontSize: 10, color: _getSentimentColor(kw.sentiment))),
+                                                  backgroundColor: _getSentimentColor(kw.sentiment).withOpacity(0.1),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                  trailing: IconButton( // 비디오 링크
+                                    icon: const Icon(Icons.open_in_new, size: 16), 
+                                    color: AppTheme.primaryColor,
+                                    onPressed: () => _launchYoutubeVideo(youtubeData.videoId),
+                                  ),
+                                  dense: true,
+                                ),
+                              );
+                            },
+                          ),
                       ),
                     ],
                   ),
@@ -493,9 +642,23 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                 child: TrendsPieChart(trends: _trends, itemCount: 10),
               ),
             ],
-          );
+          ),
+        ),
+      ],
+    );
   }
 
+  // 정렬 타입에 따른 색상 반환 (선택된 칩 표시용)
+  Color _getSentimentColorForSort(SentimentSortType type) {
+    switch (type) {
+      case SentimentSortType.positive: return const Color(0xFF1DB954);
+      case SentimentSortType.negative: return AppTheme.primaryColor;
+      case SentimentSortType.neutral: return AppTheme.textColor;
+      case SentimentSortType.all: return Colors.blueGrey; // 전체 선택 시 색상
+    }
+  }
+
+  // 기존 감성 색상 함수
   Color _getSentimentColor(Sentiment sentiment) {
     switch (sentiment) {
       case Sentiment.positive:
@@ -628,4 +791,11 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
       ),
     );
   }
+}
+
+// 문자열 확장 함수 (첫 글자 대문자화)
+extension StringExtension on String {
+    String capitalize() {
+      return "${this[0].toUpperCase()}${substring(1)}";
+    }
 } 

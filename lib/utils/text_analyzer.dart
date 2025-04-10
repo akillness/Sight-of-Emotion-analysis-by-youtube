@@ -1,140 +1,221 @@
 /// 텍스트 분석 유틸리티 클래스 - 향상된 키워드 추출
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:math';
+import 'package:http/http.dart' as http; // http 패키지 다시 사용
 import 'package:flutter/foundation.dart';
+import 'dart:collection'; // Import for LinkedHashMap
+import '../config/api_keys.dart'; // Import API keys
 
 class TextAnalyzer {
-  // API 엔드포인트 URL
-  static const String _apiUrl = 'https://api-inference.huggingface.co/models/beomi/KcELECTRA-base-v2022';
+  // API 엔드포인트 URL (klue/roberta-base 모델 사용)
+  static const String _apiUrl = 'https://api-inference.huggingface.co/models/klue/roberta-base';
   
-  // 여기에 HuggingFace API 키를 입력 (없으면 폴백 방식 사용)
-  static const String _apiKey = '';
+  // HuggingFace API 키 (설정 파일에서 가져옴)
+  static const String _apiKey = huggingFaceApiKey;
   
-  /// 텍스트에서 키워드 추출
-  static Future<List<String>> extractKeywords(String text) async {
-    try {
-      // API 키가 없으면 기존 방식 사용
-      if (_apiKey.isEmpty) {
-        return _extractKeywordsWithPatternMatching(text);
+  // API 호출 타임아웃 (짧게 설정)
+  static const Duration _apiTimeout = Duration(seconds: 5);
+
+  /// 텍스트에서 키워드 추출 (API 시도 후 로컬 폴백)
+  static Future<Map<String, double>> extractKeywords(String text) async {
+    if (kDebugMode) {
+      print('TextAnalyzer: Extracting keywords START for text (length: ${text.length})');
+      if (text.length < 100) { 
+        print('TextAnalyzer: Input text: "$text"');
       }
-      
-      // 1. 기본 전처리
-      final normalizedText = text.toLowerCase()
-          .replaceAll(RegExp(r'[^\w\s가-힣]'), ' ') // 특수문자 제거
-          .replaceAll(RegExp(r'\s+'), ' ') // 연속된 공백 제거
-          .trim();
-          
-      // 2. 우선 기존 패턴 매칭 방식으로 후보 키워드 추출
-      final candidates = _extractCandidateKeywords(normalizedText);
-      
-      // 3. 모델 기반 키워드 중요도 계산
-      final keywords = await _rankKeywordsWithTransformer(candidates, normalizedText);
-      
-      return keywords.take(5).toList();
-    } catch (e) {
-      // API 오류 발생 시 기존 방식으로 폴백
-      if (kDebugMode) {
-        print('Transformer API error: $e, falling back to pattern matching');
-      }
-      return _extractKeywordsWithPatternMatching(text);
     }
+    
+    final normalizedText = text.toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s가-힣]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (normalizedText.isEmpty) {
+      if (kDebugMode) {
+          print('TextAnalyzer: Normalized text is empty, returning empty keywords.');
+      }
+      return {};
+    }
+
+    final candidates = _extractCandidateKeywords(normalizedText);
+    if (kDebugMode) {
+        print('TextAnalyzer: Found ${candidates.length} candidate keywords: ${candidates.take(10).join(', ')}...');
+    }
+    
+    if (candidates.isEmpty) {
+        if (kDebugMode) {
+            print('TextAnalyzer: No candidates found.');
+        }
+        return {};
+    }
+
+    // Transformer 모델 API를 사용하여 순위 매기기 시도 (빠른 폴백 포함)
+    final rankedScores = await _rankKeywordsWithTransformer(candidates, normalizedText);
+
+    final top5Keywords = Map.fromEntries(rankedScores.entries.take(5));
+    if (kDebugMode) {
+        print('TextAnalyzer: Extracting keywords END. Top 5: ${top5Keywords.keys.join(', ')}');
+    }
+    return top5Keywords;
   }
   
-  /// Transformer 모델을 사용해 키워드 중요도 계산
-  static Future<List<String>> _rankKeywordsWithTransformer(
+  /// Transformer 모델 API를 사용해 키워드 중요도 계산 시도 및 폴백 처리
+  static Future<Map<String, double>> _rankKeywordsWithTransformer(
     List<String> candidates, 
     String originalText
   ) async {
     final scores = <String, double>{};
-    
-    try {
-      // API 호출 횟수를 줄이기 위해 일괄 처리
-      final batchPrompts = candidates.map((keyword) => 
-          '$originalText [MASK]는 $keyword입니다.').toList();
-      
-      // API 호출 (최대 5개 키워드만 처리)
-      final topCandidates = candidates.take(5).toList();
-      for (final keyword in topCandidates) {
+    final topCandidates = candidates.take(5).toList(); // 상위 5개만 API 시도
+    bool apiSuccess = false;
+
+    if (topCandidates.isNotEmpty && _apiKey.isNotEmpty && !_apiKey.contains('YOUR')) { // API 키가 유효할 때만 시도
+        if (kDebugMode) {
+            print('TextAnalyzer: Attempting API batch ranking for top ${topCandidates.length} candidates using $_apiUrl');
+        }
         try {
-          final response = await http.post(
-            Uri.parse(_apiUrl),
-            headers: {
-              'Authorization': 'Bearer $_apiKey',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'inputs': '$originalText [MASK]는 $keyword입니다.',
-              'options': {'wait_for_model': true}
-            }),
-          );
-          
-          if (response.statusCode == 200) {
-            final result = jsonDecode(response.body);
-            if (result is List && result.isNotEmpty) {
-              final firstResult = result.first;
-              double score = firstResult['score'] ?? 0.0;
-              
-              // 키워드 길이와 복합성도 고려
-              score += keyword.length * 0.05;
-              if (keyword.contains(RegExp(r'[가-힣]')) && keyword.contains(RegExp(r'[a-zA-Z]'))) {
-                score += 0.5;
-              }
-              
-              scores[keyword] = score;
+            // 배치 입력 생성 (키워드를 [MASK]로 대체)
+            final batchInputs = topCandidates.map((keyword) {
+                final maskedText = originalText.replaceFirst(keyword, '[MASK]');
+                return maskedText != originalText ? maskedText : '$originalText [MASK] $keyword'; // 폴백 형식
+            }).toList();
+            
+            final response = await http.post(
+                Uri.parse(_apiUrl),
+                headers: {
+                'Authorization': 'Bearer $_apiKey',
+                'Content-Type': 'application/json',
+                },
+                body: jsonEncode({
+                'inputs': batchInputs,
+                'options': {'wait_for_model': true} 
+                }),
+            ).timeout(_apiTimeout); // 짧은 타임아웃 적용
+
+            if (response.statusCode == 200) {
+                final results = jsonDecode(response.body);
+                if (results is List && results.length == topCandidates.length) {
+                    if (kDebugMode) {
+                        print('TextAnalyzer: API batch request successful.');
+                    }
+                    for (int i = 0; i < results.length; i++) {
+                        final keyword = topCandidates[i];
+                        final result = results[i];
+                        double apiScore = 0.0;
+                        // 응답 파싱 (fill-mask 형식 가정)
+                        try {
+                            if (result is List) {
+                                final matchingPrediction = result.firstWhere(
+                                    (prediction) => prediction is Map && prediction['token_str'] == keyword,
+                                    orElse: () => null,
+                                );
+                                if (matchingPrediction != null) {
+                                    apiScore = (matchingPrediction['score'] as num?)?.toDouble() ?? 0.0;
+                                }
+                            }
+                        } catch (e) {
+                            if (kDebugMode) {
+                                print('TextAnalyzer: Error parsing API score for "$keyword": $e');
+                            }
+                        }
+                        scores[keyword] = apiScore + _precomputeScore(keyword); // API 점수 + 기본 점수
+                    }
+                    apiSuccess = true; // API 성공 플래그 설정
+                } else {
+                    if (kDebugMode) {
+                        print('TextAnalyzer: API batch response format mismatch (Expected List[${topCandidates.length}], Got: ${results.runtimeType}).');
+                    }
+                }
+            } else {
+                if (kDebugMode) {
+                    print('TextAnalyzer: API batch request failed with status ${response.statusCode}.');
+                }
             }
-          }
         } catch (e) {
-          // 개별 API 호출 실패 시 기본 점수 할당
-          scores[keyword] = keyword.length * 0.2;
+            if (kDebugMode) {
+                if (e is TimeoutException) {
+                    print('TextAnalyzer: API batch request timed out after $_apiTimeout.');
+                } else {
+                    print('TextAnalyzer: API batch request error: $e');
+                }
+            }
         }
-        
-        // API 호출 사이 짧은 딜레이
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-      
-      // 점수가 없는 나머지 키워드에 대해 기본 점수 계산
-      for (final keyword in candidates) {
-        if (!scores.containsKey(keyword)) {
-          scores[keyword] = _calculateBasicScore(keyword, originalText);
+    } else {
+         if (kDebugMode) {
+            print('TextAnalyzer: Skipping API call (No candidates, or API key invalid).');
         }
-      }
-      
-      // 점수 기준 정렬
-      final sortedKeywords = scores.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      
-      return sortedKeywords.map((e) => e.key).toList();
-    } catch (e) {
-      // 에러 시 기존 방식으로 계산한 점수로 정렬
-      return _calculateFallbackScores(candidates, originalText);
     }
+
+    // API 호출 실패 시 또는 나머지 후보들에 대해 로컬 점수 계산
+    if (!apiSuccess) {
+        if (kDebugMode) {
+            print('TextAnalyzer: API call failed or skipped. Calculating all scores using local rules.');
+        }
+        // 모든 후보에 대해 로컬 점수 계산
+        for (final keyword in candidates) {
+            scores[keyword] = _calculateBasicScore(keyword, originalText);
+        }
+    } else {
+        if (kDebugMode) {
+            print('TextAnalyzer: API call successful for top ${topCandidates.length}. Calculating remaining scores locally.');
+        }
+        // API 호출에서 제외된 나머지 후보들에 대해 로컬 점수 계산
+        for (final keyword in candidates) {
+            if (!scores.containsKey(keyword)) {
+                scores[keyword] = _calculateBasicScore(keyword, originalText);
+            }
+        }
+    }
+    
+    // 모든 점수를 내림차순으로 정렬
+    final sortedEntries = scores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+      
+    return LinkedHashMap.fromEntries(sortedEntries);
   }
-  
-  /// 기본 점수 계산 (API 호출 없이)
-  static double _calculateBasicScore(String keyword, String text) {
-    double score = 0;
-    
-    // 길이 점수
-    score += keyword.length * 0.2;
-    
-    // 위치 점수
-    if (text.startsWith(keyword)) score += 3;
-    if (text.endsWith(keyword)) score += 2;
-    
-    // 빈도 점수
-    final frequency = text.split(' ').where((w) => w.contains(keyword)).length;
-    score += frequency * 0.8;
-    
-    // 복합어 점수
+
+  /// 키워드의 기본 가중치를 미리 계산 (API 점수와 합산용)
+  static double _precomputeScore(String keyword) {
+    double score = keyword.length * 0.05; // 길이 가중치
     if (keyword.contains(RegExp(r'[가-힣]')) && keyword.contains(RegExp(r'[a-zA-Z]'))) {
-      score += 2.0;
+      score += 0.5; // 복합어 가중치
     }
-    
     return score;
   }
   
-  /// 후보 키워드 추출 (기존 패턴 매칭 방식)
+  /// 로컬 규칙 기반으로만 키워드 점수 계산 및 정렬된 맵 반환 (폴백용)
+  static Map<String, double> _calculateLocalScores(
+      List<String> candidates, String text) {
+    final scores = <String, double>{};
+    if (kDebugMode) {
+        print('TextAnalyzer: Calculating basic scores for ${candidates.length} candidates.');
+    }
+    for (final keyword in candidates) {
+      scores[keyword] = _calculateBasicScore(keyword, text);
+    }
+    final sortedEntries = scores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (kDebugMode) {
+        print('TextAnalyzer: Finished calculating local scores.');
+    }
+    return LinkedHashMap.fromEntries(sortedEntries);
+  }
+
+  /// 기본 점수 계산 (API 호출 없이)
+  static double _calculateBasicScore(String keyword, String text) {
+    double score = 0;
+    score += keyword.length * 0.2; // 길이
+    if (text.startsWith(keyword)) score += 3; // 시작 위치
+    if (text.endsWith(keyword)) score += 2; // 끝 위치
+    final frequency = text.split(' ').where((w) => w.contains(keyword)).length; // 빈도
+    score += frequency * 0.8;
+    if (keyword.contains(RegExp(r'[가-힣]')) && keyword.contains(RegExp(r'[a-zA-Z]'))) { // 복합어
+      score += 2.0;
+    }
+    return score;
+  }
+  
+  /// 후보 키워드 추출
   static List<String> _extractCandidateKeywords(String text) {
     // 1. 한국어 키워드 추출 (2글자 이상)
     final koreanKeywords = RegExp(r'[가-힣]{2,}')
@@ -153,57 +234,11 @@ class TextAnalyzer {
     // 3. 복합 키워드 추출 (한글 + 영어)
     final compoundKeywords = _extractCompoundKeywords(text);
 
-    return [...koreanKeywords, ...englishKeywords, ...compoundKeywords];
-  }
-  
-  /// 기존 방식으로 키워드 추출 (폴백용)
-  static List<String> _extractKeywordsWithPatternMatching(String text) {
-    // 1. 기본 전처리
-    final normalizedText = text.toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s가-힣]'), ' ') // 특수문자 제거
-        .replaceAll(RegExp(r'\s+'), ' ') // 연속된 공백 제거
-        .trim();
-
-    // 2. 한국어 키워드 추출 (2글자 이상)
-    final koreanKeywords = RegExp(r'[가-힣]{2,}')
-        .allMatches(normalizedText)
-        .map((m) => m.group(0)!)
-        .where((word) => !_isStopWord(word))
-        .toList();
-
-    // 3. 영어 키워드 추출 (3글자 이상)
-    final englishKeywords = RegExp(r'\b[a-zA-Z]{3,}\b')
-        .allMatches(normalizedText)
-        .map((m) => m.group(0)!.toLowerCase())
-        .where((word) => !_isStopWord(word))
-        .toList();
-
-    // 4. 복합 키워드 추출 (한글 + 영어)
-    final compoundKeywords = _extractCompoundKeywords(normalizedText);
-
-    // 5. 키워드 중요도 점수 계산 및 정렬
-    final allKeywords = [...koreanKeywords, ...englishKeywords, ...compoundKeywords];
-    final keywordScores = _calculateKeywordScores(allKeywords, normalizedText);
-    
-    final sortedEntries = keywordScores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    
-    return sortedEntries
-        .take(5)
-        .map((e) => e.key)
-        .toList();
-  }
-  
-  /// 폴백용 키워드 점수 계산
-  static List<String> _calculateFallbackScores(List<String> keywords, String text) {
-    final scores = _calculateKeywordScores(keywords, text);
-    final sortedEntries = scores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    
-    return sortedEntries.map((e) => e.key).toList();
+    // 중복 제거 및 반환
+    return {...koreanKeywords, ...englishKeywords, ...compoundKeywords}.toList();
   }
 
-  /// 불용어 목록을 사용하여 키워드가 불용어인지 확인합니다.
+  /// 불용어 확인
   static bool _isStopWord(String word) {
     final stopWords = {
       // 영어 불용어
@@ -234,7 +269,7 @@ class TextAnalyzer {
     return stopWords.contains(word.toLowerCase());
   }
 
-  /// 복합 키워드(한글+영어 조합)를 추출합니다.
+  /// 복합 키워드 추출
   static List<String> _extractCompoundKeywords(String text) {
     final compoundPattern = RegExp(r'[가-힣]+[a-zA-Z]+|[a-zA-Z]+[가-힣]+');
     return compoundPattern
@@ -242,50 +277,5 @@ class TextAnalyzer {
         .map((m) => m.group(0)!)
         .where((word) => word.length >= 4)
         .toList();
-  }
-
-  /// 키워드 중요도 점수를 계산합니다.
-  static Map<String, double> _calculateKeywordScores(List<String> keywords, String title) {
-    final scores = <String, double>{};
-    final words = title.split(' ');
-    final titleLength = title.length;
-    
-    for (final keyword in keywords) {
-      double score = 0;
-      
-      // 1. 길이 점수 (키워드가 길수록 더 중요)
-      score += keyword.length * 0.2;
-      
-      // 2. 위치 점수
-      if (title.startsWith(keyword)) score += 3; // 제목 시작
-      if (title.endsWith(keyword)) score += 2;   // 제목 끝
-      
-      // 3. 빈도 점수 (키워드가 자주 등장할수록 더 중요)
-      final frequency = words.where((w) => w.contains(keyword)).length;
-      score += frequency * 0.8;
-      
-      // 4. 복합어 점수 (한글+영어 조합은 더 중요)
-      if (keyword.contains(RegExp(r'[가-힣]')) && keyword.contains(RegExp(r'[a-zA-Z]'))) {
-        score += 2.0;
-      }
-      
-      // 5. 제목 내 비중 점수 (전체 제목에서 차지하는 비중)
-      final keywordRatio = keyword.length / titleLength;
-      score += keywordRatio * 5;
-      
-      // 6. 대문자 포함 점수 (영문 키워드의 경우)
-      if (keyword.contains(RegExp(r'[A-Z]'))) {
-        score += 1.5;
-      }
-      
-      // 7. 숫자 포함 점수 (숫자가 포함된 키워드는 더 중요할 수 있음)
-      if (keyword.contains(RegExp(r'[0-9]'))) {
-        score += 1.0;
-      }
-      
-      scores[keyword] = score;
-    }
-    
-    return scores;
   }
 } 
