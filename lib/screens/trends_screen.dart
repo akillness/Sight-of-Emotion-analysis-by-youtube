@@ -170,18 +170,18 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
+              color: AppTheme.cardColor,
+              borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 20,
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(8),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: ConstrainedBox(
@@ -190,246 +190,196 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                   ),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.vertical,
-                    child: Theme(
-                      data: Theme.of(context).copyWith(
-                        dataTableTheme: DataTableThemeData(
-                          headingTextStyle: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                          headingRowColor: WidgetStateProperty.all(
-                            AppTheme.primaryColor,
-                          ),
-                          dataRowMinHeight: 70,
-                          dataRowMaxHeight: 90,
-                          columnSpacing: 24,
-                          horizontalMargin: 24,
-                          headingRowHeight: 60,
-                          dividerThickness: 0.5,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
-                        ),
+                    child: DataTable(
+                      columnSpacing: 24,
+                      horizontalMargin: 24,
+                      headingRowHeight: 56,
+                      dataRowMinHeight: 70,
+                      dataRowMaxHeight: 90,
+                      headingRowColor: MaterialStateProperty.all(
+                        AppTheme.secondaryColor,
                       ),
-                      child: DataTable(
-                        columns: const [
-                          DataColumn(label: Text('순위')),
-                          DataColumn(label: Text('제목')),
-                          DataColumn(label: Text('조회수')),
-                          DataColumn(label: Text('좋아요')),
-                          DataColumn(label: Text('키워드')),
-                          DataColumn(label: Text('업로드 시간')),
-                        ],
-                        rows: _currentPageItems.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final item = entry.value;
-                          final rank = (_currentPage - 1) * _itemsPerPage + index + 1;
-                          
-                          Color getRankColor() {
-                            if (rank <= 3) return const Color(0xFFFFB800);
-                            if (rank <= 10) return AppTheme.primaryColor;
-                            if (rank <= 20) return const Color(0xFF25C685);
-                            return Colors.grey;
-                          }
+                      headingTextStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textColor,
+                        fontSize: 14,
+                      ),
+                      dividerThickness: 0.5,
+                      columns: const [
+                        DataColumn(label: Text('순위')),
+                        DataColumn(label: Text('제목')),
+                        DataColumn(label: Text('조회수')),
+                        DataColumn(label: Text('좋아요')),
+                        DataColumn(label: Text('키워드')),
+                        DataColumn(label: Text('업로드 시간')),
+                      ],
+                      rows: _currentPageItems.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final item = entry.value;
+                        final rank = (_currentPage - 1) * _itemsPerPage + index + 1;
+                        
+                        Color getRankColor() {
+                          if (rank <= 3) return Colors.amber;
+                          if (rank <= 10) return AppTheme.primaryColor;
+                          return Colors.grey;
+                        }
 
-                          return DataRow(
-                            color: WidgetStateProperty.resolveWith<Color?>(
-                              (Set<WidgetState> states) {
-                                if (states.contains(WidgetState.hovered)) {
-                                  return AppTheme.primaryColor.withOpacity(0.05);
-                                }
-                                return null;
-                              },
+                        return DataRow(
+                          color: MaterialStateProperty.resolveWith<Color?>(
+                            (Set<MaterialState> states) {
+                              if (states.contains(MaterialState.hovered)) {
+                                return AppTheme.secondaryColor;
+                              }
+                              return null;
+                            },
+                          ),
+                          cells: [
+                            DataCell(
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: getRankColor().withOpacity(0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    rank.toString(),
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: getRankColor(),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                            cells: [
-                              DataCell(
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: getRankColor().withOpacity(0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      rank.toString(),
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: getRankColor(),
-                                      ),
-                                    ),
-                                  ),
+                            DataCell(
+                              Container(
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.3,
                                 ),
-                              ),
-                              DataCell(
-                                Container(
-                                  constraints: BoxConstraints(
-                                    maxWidth: MediaQuery.of(context).size.width * 0.3,
-                                  ),
-                                  child: InkWell(
-                                    onTap: () => _launchYoutubeVideo(item.videoId),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            item.title,
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              color: Color(0xFF2C3E50),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines: 2,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.all(6),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.primaryColor.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: const Icon(
-                                            Icons.play_circle_outline,
-                                            size: 16,
-                                            color: AppTheme.primaryColor,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primaryColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(
-                                        Icons.visibility_outlined,
-                                        size: 16,
-                                        color: AppTheme.primaryColor,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        NumberFormat.compact().format(item.views),
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: rank <= 10 ? FontWeight.bold : FontWeight.normal,
-                                          color: AppTheme.primaryColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFF6B6B).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(
-                                        Icons.thumb_up_outlined,
-                                        size: 16,
-                                        color: Color(0xFFFF6B6B),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        NumberFormat.compact().format(item.likes),
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: rank <= 10 ? FontWeight.bold : FontWeight.normal,
-                                          color: const Color(0xFFFF6B6B),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              DataCell(
-                                Container(
-                                  constraints: BoxConstraints(
-                                    maxWidth: MediaQuery.of(context).size.width * 0.2,
-                                  ),
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: item.keywords.map((keyword) {
-                                        return Padding(
-                                          padding: const EdgeInsets.only(right: 4),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.primaryColor.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: AppTheme.primaryColor.withOpacity(0.3),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              keyword,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: AppTheme.primaryColor.withOpacity(0.8),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
+                                child: InkWell(
+                                  onTap: () => _launchYoutubeVideo(item.videoId),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(
-                                        Icons.access_time_rounded,
-                                        size: 14,
-                                        color: Colors.grey.shade600,
+                                      Flexible(
+                                        child: Text(
+                                          item.title,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: AppTheme.textColor,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 2,
+                                        ),
                                       ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _formatDate(item.timestamp),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade700,
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primaryColor,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Icon(
+                                          Icons.play_arrow,
+                                          size: 14,
+                                          color: Colors.white,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
-                            ],
-                          );
-                        }).toList(),
-                      ),
+                            ),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.visibility_outlined,
+                                    size: 16,
+                                    color: AppTheme.textColor.withOpacity(0.7),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    NumberFormat.compact().format(item.views),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: rank <= 10 ? FontWeight.bold : FontWeight.normal,
+                                      color: AppTheme.textColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.thumb_up_outlined,
+                                    size: 16,
+                                    color: AppTheme.textColor.withOpacity(0.7),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    NumberFormat.compact().format(item.likes),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: rank <= 10 ? FontWeight.bold : FontWeight.normal,
+                                      color: AppTheme.textColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            DataCell(
+                              Container(
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.2,
+                                ),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: item.keywords.map((keyword) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(right: 4),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.primaryColor.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            keyword,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: AppTheme.textColor,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _formatDate(item.timestamp),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.textColor.withOpacity(0.7),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
@@ -461,17 +411,22 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
 
   Widget _buildAnalysisTab() {
     return _currentAnalysisResults.isEmpty
-        ? const Center(child: Text('분석 데이터가 없습니다.'))
+        ? const Center(
+            child: Text(
+              '분석 데이터가 없습니다.',
+              style: TextStyle(color: AppTheme.textColor),
+            ),
+          )
         : GridView.count(
             crossAxisCount: 2,
             children: [
               Card(
-                elevation: 8,
-                shadowColor: Colors.black26,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                ),
+                elevation: 4,
                 margin: const EdgeInsets.all(16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                color: AppTheme.cardColor,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -482,7 +437,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF2C3E50),
+                          color: AppTheme.textColor,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -491,11 +446,13 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                           itemCount: _currentAnalysisResults.length,
                           itemBuilder: (context, index) {
                             final result = _currentAnalysisResults[index];
-                            // 감정 분석 시각화 구현
                             return ListTile(
                               title: Text(
                                 result.youtubeData.title,
-                                style: const TextStyle(fontSize: 14),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: AppTheme.textColor,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -503,15 +460,23 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                 spacing: 4,
                                 children: result.keywords.map((k) {
                                   final color = _getSentimentColor(k.sentiment);
-                                  return Chip(
-                                    label: Text(k.keyword),
-                                    labelStyle: TextStyle(
-                                      color: color,
-                                      fontSize: 12,
+                                  return Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
                                     ),
-                                    backgroundColor: color.withOpacity(0.1),
-                                    visualDensity: VisualDensity.compact,
-                                    side: BorderSide(color: color.withOpacity(0.3)),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      k.keyword,
+                                      style: TextStyle(
+                                        color: color,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   );
                                 }).toList(),
                               ),
@@ -534,18 +499,19 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
   Color _getSentimentColor(Sentiment sentiment) {
     switch (sentiment) {
       case Sentiment.positive:
-        return const Color(0xFF25C685);
+        return const Color(0xFF1DB954); // Spotify Green
       case Sentiment.negative:
-        return const Color(0xFFFF6B6B);
+        return AppTheme.primaryColor; // Netflix Red
       case Sentiment.neutral:
       default:
-        return const Color(0xFF94A3B8);
+        return AppTheme.textColor; // White
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -553,46 +519,37 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(
-                        Icons.analytics_outlined,
+                      const Icon(
+                        Icons.movie_filter,
                         color: AppTheme.primaryColor,
-                        size: 28,
+                        size: 32,
                       ),
-                      SizedBox(width: 12),
+                      const SizedBox(width: 12),
                       Text(
                         'YouTube 트렌드 분석',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2C3E50),
-                        ),
+                        style: Theme.of(context).textTheme.displaySmall,
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                      color: AppTheme.cardColor,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     child: Row(
                       children: [
                         Expanded(
                           child: TextField(
-                            decoration: const InputDecoration(
+                            style: const TextStyle(color: AppTheme.textColor),
+                            decoration: InputDecoration(
                               hintText: '검색어를 입력하세요',
+                              hintStyle: TextStyle(color: AppTheme.textColor.withOpacity(0.5)),
                               border: InputBorder.none,
-                              icon: Icon(Icons.search, color: AppTheme.primaryColor),
+                              icon: const Icon(Icons.search, color: AppTheme.primaryColor),
                             ),
                             onChanged: (value) {
                               setState(() {
@@ -606,12 +563,11 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                           onPressed: _searchTrends,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
+                            foregroundColor: AppTheme.textColor,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(4),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           ),
                           child: const Text('검색'),
                         ),
@@ -624,22 +580,15 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                color: AppTheme.cardColor,
+                borderRadius: BorderRadius.circular(8),
               ),
               child: TabBar(
                 controller: _tabController,
                 indicatorColor: AppTheme.primaryColor,
                 indicatorWeight: 3,
                 labelColor: AppTheme.primaryColor,
-                unselectedLabelColor: AppTheme.secondaryColor,
+                unselectedLabelColor: AppTheme.textColor.withOpacity(0.7),
                 indicatorSize: TabBarIndicatorSize.tab,
                 tabs: const [
                   Tab(
@@ -660,7 +609,11 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
             const SizedBox(height: 16),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                      ),
+                    )
                   : TabBarView(
                       controller: _tabController,
                       children: [

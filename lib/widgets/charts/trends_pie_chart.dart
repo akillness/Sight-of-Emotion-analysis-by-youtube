@@ -41,49 +41,52 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
     super.dispose();
   }
 
-  // 모던한 차트 색상 팔레트
-  static const List<Color> chartColors = [
-    Color(0xFF4A6FFF), // 파란색
-    Color(0xFFFF6B6B), // 빨간색
-    Color(0xFF25C685), // 녹색
-    Color(0xFFFFA94D), // 주황색
-    Color(0xFF845EF7), // 보라색
-    Color(0xFF22B8CF), // 청록색
-    Color(0xFFFF8ED4), // 분홍색
-    Color(0xFF5C7CFA), // 인디고
-    Color(0xFFFFD43B), // 노란색
-    Color(0xFF3BC9DB), // 하늘색
-  ];
+  // Use colors derived from AppTheme
+  List<Color> getChartColors(BuildContext context) {
+    // Generate variations or use a predefined palette fitting the theme
+    return [
+      AppTheme.primaryColor,
+      AppTheme.primaryColor.withOpacity(0.7),
+      AppTheme.secondaryColor,
+      AppTheme.secondaryColor.withOpacity(0.7),
+      AppTheme.accentColor.withOpacity(0.8),
+      AppTheme.accentColor.withOpacity(0.5),
+      Colors.blueGrey, // Add more theme-consistent colors if needed
+      Colors.teal,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final topItems = widget.trends.take(widget.itemCount).toList();
     final total = topItems.fold<int>(0, (sum, item) => sum + item.views);
+    final currentChartColors = getChartColors(context); // Get theme-based colors
     
     return Card(
-      elevation: 8,
-      shadowColor: Colors.black26,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+      // Use AppTheme card styling
+      color: AppTheme.cardColor,
+      elevation: Theme.of(context).cardTheme.elevation ?? 4, 
+      shadowColor: Colors.black.withOpacity(0.5), // Darker shadow for dark theme
+      shape: Theme.of(context).cardTheme.shape ?? RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12), // Consistent rounding
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0), // Increased padding
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(left: 16.0, top: 8.0, bottom: 16.0),
+             Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
               child: Text(
                 '인기 트렌드 분석',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2C3E50),
-                ),
+                // Use AppTheme text style
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: AppTheme.textColor),
               ),
             ),
             Expanded(
+              flex: 3, // Give more space to the chart
               child: Stack(
+                alignment: Alignment.center, // Center the chart
                 children: [
                   AnimatedBuilder(
                     animation: _scaleAnimation,
@@ -101,61 +104,66 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
                               sections: topItems.asMap().entries.map((entry) {
                                 final percentage = (entry.value.views / total) * 100;
                                 final isTouched = entry.key == touchedIndex;
-                                final double radius = isTouched ? 110 : 100;
-                                
+                                final double radius = isTouched ? 65 : 60; // Adjusted radius for dark theme
+                                final double fontSize = isTouched ? 14 : 12; // Adjusted font size
+
                                 return PieChartSectionData(
                                   value: entry.value.views.toDouble(),
-                                  title: '${percentage.toStringAsFixed(1)}%',
+                                  title: '${percentage.toStringAsFixed(0)}%', // Simpler percentage
                                   radius: radius,
-                                  titleStyle: const TextStyle(
-                                    fontSize: 14,
+                                  titleStyle: TextStyle( // Use AppTheme text color
+                                    fontSize: fontSize,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black26,
-                                        blurRadius: 2,
-                                        offset: Offset(0, 1),
-                                      ),
+                                    color: AppTheme.accentColor, // White text on colored sections
+                                    shadows: const [
+                                      Shadow(color: Colors.black54, blurRadius: 2)
                                     ],
                                   ),
-                                  color: chartColors[entry.key % chartColors.length],
+                                  // Use theme-based colors
+                                  color: currentChartColors[entry.key % currentChartColors.length],
                                   borderSide: isTouched
-                                      ? const BorderSide(color: Colors.white, width: 2)
-                                      : BorderSide.none,
-                                  titlePositionPercentageOffset: 0.55,
-                                  badgeWidget: isTouched ? _buildBadge(entry.value) : null,
-                                  badgePositionPercentageOffset: 1.2,
+                                      // Use AppTheme primary color for border
+                                      ? const BorderSide(color: AppTheme.primaryColor, width: 2)
+                                      : BorderSide(color: AppTheme.backgroundColor.withOpacity(0.5), width: 1), // Subtle border for non-touched
+                                  titlePositionPercentageOffset: 0.6, // Adjust position
+                                  badgeWidget: isTouched ? _buildBadge(entry.value, currentChartColors[entry.key % currentChartColors.length]) : null, // Pass color to badge
+                                  badgePositionPercentageOffset: 1.15, // Adjust badge position
                                 );
                               }).toList(),
-                              sectionsSpace: 3,
-                              centerSpaceRadius: 50,
-                              centerSpaceColor: Colors.white,
+                              sectionsSpace: 2, // Reduced space
+                              centerSpaceRadius: 40, // Smaller center space
+                              centerSpaceColor: AppTheme.cardColor, // Match card background
                               pieTouchData: PieTouchData(
                                 enabled: true,
                                 touchCallback: (FlTouchEvent event, pieTouchResponse) {
                                   setState(() {
-                                    if (event is FlPointerHoverEvent || event is FlTapUpEvent) {
-                                      touchedIndex = pieTouchResponse?.touchedSection?.touchedSectionIndex;
+                                    if (!event.isInterestedForInteractions ||
+                                        pieTouchResponse == null ||
+                                        pieTouchResponse.touchedSection == null) {
+                                      touchedIndex = -1;
+                                      if (_controller.isCompleted) _controller.reverse();
+                                      return;
                                     }
+                                    touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                                    _controller.forward(); // Animate on touch
                                   });
                                 },
                               ),
                             ),
-                            swapAnimationDuration: const Duration(milliseconds: 300),
-                            swapAnimationCurve: Curves.easeInOutCubic,
+                            swapAnimationDuration: const Duration(milliseconds: 250), // Faster animation
+                            swapAnimationCurve: Curves.easeInOut,
                           ),
                         ),
                       );
                     },
                   ),
                   if (topItems.isEmpty)
-                    const Center(
+                     Center(
                       child: Text(
                         '데이터가 없습니다',
-                        style: TextStyle(
+                        style: TextStyle( // Use AppTheme subtitle color
                           fontSize: 16,
-                          color: Colors.grey,
+                          color: AppTheme.subtitleColor,
                         ),
                       ),
                     ),
@@ -163,15 +171,19 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
               ),
             ),
             const SizedBox(height: 16),
-            Divider(color: Colors.grey.shade200, thickness: 1),
+            // Use AppTheme divider color
+            // Access DividerThemeData from the context's theme
+            Divider(color: Theme.of(context).dividerTheme.color ?? AppTheme.secondaryColor.withOpacity(0.3), thickness: 1),
             const SizedBox(height: 8),
             Expanded(
+              flex: 2, // Give less space to legend if needed
               child: SingleChildScrollView(
                 child: Column(
                   children: topItems.asMap().entries.map((entry) {
                     final isTouched = entry.key == touchedIndex;
-                    final itemColor = chartColors[entry.key % chartColors.length];
-                    
+                    // Use theme-based colors
+                    final itemColor = currentChartColors[entry.key % currentChartColors.length];
+
                     return MouseRegion(
                       onEnter: (_) {
                         setState(() => touchedIndex = entry.key);
@@ -183,28 +195,31 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0),
-                        padding: const EdgeInsets.all(8.0),
+                        margin: const EdgeInsets.symmetric(vertical: 4.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0), // Adjust padding
                         decoration: BoxDecoration(
-                          color: isTouched ? itemColor.withOpacity(0.1) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
+                          // Use AppTheme card color for background on touch
+                          color: isTouched ? itemColor.withOpacity(0.2) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
                           border: isTouched
-                              ? Border.all(color: itemColor, width: 1)
+                              // Use AppTheme primary color for border
+                              ? Border.all(color: itemColor.withOpacity(0.8), width: 1)
                               : null,
                         ),
                         child: Row(
                           children: [
                             AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              width: isTouched ? 20 : 16,
-                              height: isTouched ? 20 : 16,
+                              width: isTouched ? 18 : 14, // Adjusted size
+                              height: isTouched ? 18 : 14,
                               decoration: BoxDecoration(
                                 color: itemColor,
-                                shape: BoxShape.circle,
+                                // Use circle or rounded square
+                                borderRadius: BorderRadius.circular(4), // Softer edges
                                 boxShadow: isTouched
                                     ? [
                                         BoxShadow(
-                                          color: itemColor.withOpacity(0.3),
+                                          color: itemColor.withOpacity(0.5), // Darker shadow
                                           blurRadius: 4,
                                           spreadRadius: 1,
                                         )
@@ -219,70 +234,58 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
                                 children: [
                                   Text(
                                     entry.value.title,
-                                    style: TextStyle(
-                                      fontSize: isTouched ? 15 : 14,
-                                      fontWeight: isTouched ? FontWeight.bold : FontWeight.w500,
-                                      color: const Color(0xFF2C3E50),
+                                    style: TextStyle( // Use AppTheme text color
+                                      fontSize: 14,
+                                      fontWeight: isTouched ? FontWeight.bold : FontWeight.normal,
+                                      color: AppTheme.textColor,
                                     ),
+                                    maxLines: 1, // Ensure single line
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 2),
+                                  const SizedBox(height: 4),
                                   Row(
                                     children: [
                                       Icon(
                                         Icons.visibility_outlined,
-                                        size: 12,
-                                        color: Colors.grey.shade600,
+                                        size: 14, // Slightly larger icon
+                                        // Use AppTheme subtitle color
+                                        color: AppTheme.subtitleColor,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
                                         NumberFormat.compact().format(entry.value.views),
-                                        style: TextStyle(
+                                        style: TextStyle( // Use AppTheme subtitle color
                                           fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                          color: AppTheme.subtitleColor,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
                                       Icon(
                                         Icons.thumb_up_outlined,
-                                        size: 12,
-                                        color: Colors.grey.shade600,
+                                        size: 14, // Slightly larger icon
+                                        // Use AppTheme subtitle color
+                                        color: AppTheme.subtitleColor,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
                                         NumberFormat.compact().format(entry.value.likes),
-                                        style: TextStyle(
+                                        style: TextStyle( // Use AppTheme subtitle color
                                           fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                          color: AppTheme.subtitleColor,
                                         ),
                                       ),
                                     ],
                                   ),
-                                  if (isTouched && entry.value.keywords.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      spacing: 4,
-                                      runSpacing: 4,
-                                      children: entry.value.keywords.take(3).map((keyword) {
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: itemColor.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: itemColor.withOpacity(0.3)),
-                                          ),
-                                          child: Text(
-                                            keyword,
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: itemColor.withOpacity(0.8),
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ],
                                 ],
+                              ),
+                            ),
+                            // Optional: Add percentage text to legend
+                             Text(
+                              '${(entry.value.views / total * 100).toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isTouched ? itemColor : AppTheme.subtitleColor,
                               ),
                             ),
                           ],
@@ -299,71 +302,34 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
     );
   }
 
-  Widget _buildBadge(YoutubeData data) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            spreadRadius: 2,
-            offset: const Offset(0, 4),
+  // Updated badge to use theme colors
+  Widget _buildBadge(YoutubeData item, Color bgColor) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 200),
+      opacity: touchedIndex != null ? 1.0 : 0.0,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.cardColor.withOpacity(0.9), // Use card color for badge background
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            )
+          ],
+          border: Border.all(color: bgColor, width: 1), // Use section color for border
+        ),
+        child: Text(
+          item.title.length > 15 ? '${item.title.substring(0, 12)}...' : item.title,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textColor, // Use theme text color
           ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            data.title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2C3E50),
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.visibility_outlined,
-                size: 14,
-                color: AppTheme.primaryColor,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                NumberFormat.compact().format(data.views),
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.thumb_up_outlined,
-                size: 14,
-                color: Color(0xFFFF6B6B),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                NumberFormat.compact().format(data.likes),
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFFF6B6B),
-                ),
-              ),
-            ],
-          ),
-        ],
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }

@@ -213,38 +213,59 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
   @override
   Widget build(BuildContext context) {
     if (!_isGraphInitialized || graph.nodes.isEmpty) {
-      return const Center(
-        child: Text(
-          "키워드가 부족하거나 연결된 키워드가 없어 네트워크를 생성할 수 없습니다.",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 16,
-            color: Color(0xFF2C3E50),
-          ),
-        )
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.bubble_chart,
+              size: 64,
+              color: AppTheme.primaryColor.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              "키워드가 부족하거나 연결된 키워드가 없어\n네트워크를 생성할 수 없습니다.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                color: AppTheme.textColor,
+              ),
+            ),
+          ],
+        ),
       );
     }
 
     return Card(
-      elevation: 8,
-      shadowColor: Colors.black26,
+      elevation: 4,
+      color: AppTheme.cardColor,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(left: 16.0, top: 8.0, bottom: 16.0),
-              child: Text(
-                '키워드 네트워크 분석',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2C3E50),
-                ),
+            Padding(
+              padding: const EdgeInsets.only(left: 16.0, top: 8.0, bottom: 16.0),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.hub,
+                    color: AppTheme.primaryColor,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '키워드 네트워크 분석',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textColor,
+                    ),
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -257,7 +278,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
                   graph: graph,
                   algorithm: builder,
                   paint: Paint()
-                    ..color = AppTheme.primaryColor.withOpacity(0.5)
+                    ..color = AppTheme.primaryColor.withOpacity(0.7)
                     ..strokeWidth = 1.5,
                   builder: (Node node) {
                     String keyword = node.key?.value as String? ?? '';
@@ -274,20 +295,20 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
                       width: nodeRadius * 2,
                       height: nodeRadius * 2,
                       decoration: BoxDecoration(
-                        color: nodeColor.withOpacity(0.8),
+                        color: nodeColor.withOpacity(0.9),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: nodeColor.withOpacity(0.3),
+                            color: nodeColor.withOpacity(0.5),
                             blurRadius: 8,
                             spreadRadius: 1,
                           ),
                         ],
                         border: Border.all(
                           color: isCentralNode 
-                            ? Colors.amber 
-                            : nodeColor.withOpacity(0.8),
-                          width: isCentralNode ? 3.0 : 1.5,
+                            ? Colors.white 
+                            : nodeColor,
+                          width: isCentralNode ? 2.0 : 1.0,
                         ),
                       ),
                       child: Center(
@@ -312,7 +333,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
                                       Shadow(
                                         offset: const Offset(0, 1),
                                         blurRadius: 3,
-                                        color: Colors.black.withOpacity(0.3),
+                                        color: Colors.black.withOpacity(0.5),
                                       ),
                                     ],
                                   ),
@@ -328,14 +349,14 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
+                                    color: AppTheme.primaryColor,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: nodeColor),
+                                    border: Border.all(color: Colors.white, width: 1),
                                   ),
                                   child: Text(
                                     connections.toString(),
-                                    style: TextStyle(
-                                      color: nodeColor,
+                                    style: const TextStyle(
+                                      color: Colors.white,
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                     ),
