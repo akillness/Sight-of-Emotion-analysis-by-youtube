@@ -2,11 +2,45 @@ import 'dart:math';
 import '../models/youtube_data.dart';
 import '../models/keyword_sentiment.dart';
 import '../models/video_analysis_result.dart';
+import '../utils/text_analyzer.dart';
 
 class NlpService {
   final Random _random = Random();
 
-  // --- Simulated AI Analysis based on Keywords ---
+  // Method updated to analyze YoutubeData titles
+  Future<List<VideoAnalysisResult>> analyzeVideoTitles(List<YoutubeData> youtubeItems) async {
+    List<VideoAnalysisResult> results = [];
+    for (var item in youtubeItems) {
+      // Use the video title for keyword extraction and analysis
+      List<String> titleKeywords = TextAnalyzer.extractKeywords(item.title);
+
+      // Use the predefined keywords list from YoutubeData if available and not empty
+      List<String> sourceKeywords = item.keywords.isNotEmpty ? item.keywords : titleKeywords;
+
+      List<KeywordSentiment> keywords = sourceKeywords.map((keyword) {
+        String keywordLower = keyword.toLowerCase();
+
+        Sentiment sentiment = _calculateSentiment(keywordLower);
+        Emotion emotion = _calculateEmotion(keywordLower);
+        double score = _calculateScore(keyword, sentiment);
+
+        return KeywordSentiment(
+          keyword: keyword, // Keep original casing for display
+          sentiment: sentiment,
+          emotion: emotion,
+          score: score,
+        );
+      }).toList();
+
+      // Filter out keywords with very low absolute scores if needed
+      keywords.removeWhere((k) => k.score.abs() < 0.1);
+
+      results.add(VideoAnalysisResult(youtubeData: item, keywords: keywords)); // Update constructor call
+    }
+    return results;
+  }
+  
+  // --- Sentiment Analysis Methods ---
 
   Sentiment _calculateSentiment(String keywordLower) {
     // Simple keyword matching for sentiment
@@ -56,42 +90,5 @@ class NlpService {
 
     // Clamp score between -1.0 and 1.0
     return score.clamp(-1.0, 1.0);
-  }
-
-  // Method updated to analyze YoutubeData titles
-  Future<List<VideoAnalysisResult>> analyzeVideoTitles(List<YoutubeData> youtubeItems) async {
-    List<VideoAnalysisResult> results = [];
-    for (var item in youtubeItems) {
-      // Use the video title for keyword extraction and analysis
-      List<String> titleKeywords = item.title
-          .replaceAll(RegExp(r'[?!,.¡¿:"]'), '') // Keep symbols like | or [] if needed for context
-          .split(RegExp(r'\s+|[|(\[\])]')) // Split by space or brackets/pipe
-          .where((word) => word.isNotEmpty && word.length > 1) // Basic filter
-          .toList();
-
-      // Use the predefined keywords list from YoutubeData if available and not empty
-      List<String> sourceKeywords = item.keywords.isNotEmpty ? item.keywords : titleKeywords;
-
-      List<KeywordSentiment> keywords = sourceKeywords.map((keyword) {
-        String keywordLower = keyword.toLowerCase();
-
-        Sentiment sentiment = _calculateSentiment(keywordLower);
-        Emotion emotion = _calculateEmotion(keywordLower);
-        double score = _calculateScore(keyword, sentiment);
-
-        return KeywordSentiment(
-          keyword: keyword, // Keep original casing for display
-          sentiment: sentiment,
-          emotion: emotion,
-          score: score,
-        );
-      }).toList();
-
-      // Filter out keywords with very low absolute scores if needed
-      keywords.removeWhere((k) => k.score.abs() < 0.1);
-
-      results.add(VideoAnalysisResult(youtubeData: item, keywords: keywords)); // Update constructor call
-    }
-    return results;
   }
 } 

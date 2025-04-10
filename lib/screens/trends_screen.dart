@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
@@ -11,6 +10,7 @@ import '../widgets/charts/trends_pie_chart.dart';
 import '../widgets/charts/keyword_network_graph.dart';
 import '../widgets/pagination_controls.dart';
 import '../services/database_helper.dart';
+import '../widgets/app_theme.dart';
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key});
@@ -42,7 +42,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_handleTabSelection);
     _loadTrends();
   }
@@ -174,7 +174,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withOpacity(0.08),
                   blurRadius: 20,
                   offset: const Offset(0, 4),
                 ),
@@ -198,13 +198,13 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                             color: Colors.white,
                           ),
                           headingRowColor: WidgetStateProperty.all(
-                            const Color(0xFF4A6FFF),
+                            AppTheme.primaryColor,
                           ),
-                          dataRowMinHeight: 64,
-                          dataRowMaxHeight: 84,
+                          dataRowMinHeight: 70,
+                          dataRowMaxHeight: 90,
                           columnSpacing: 24,
                           horizontalMargin: 24,
-                          headingRowHeight: 56,
+                          headingRowHeight: 60,
                           dividerThickness: 0.5,
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
                         ),
@@ -225,8 +225,8 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                           
                           Color getRankColor() {
                             if (rank <= 3) return const Color(0xFFFFB800);
-                            if (rank <= 10) return const Color(0xFF4A6FFF);
-                            if (rank <= 20) return const Color(0xFF00C48C);
+                            if (rank <= 10) return AppTheme.primaryColor;
+                            if (rank <= 20) return const Color(0xFF25C685);
                             return Colors.grey;
                           }
 
@@ -234,7 +234,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                             color: WidgetStateProperty.resolveWith<Color?>(
                               (Set<WidgetState> states) {
                                 if (states.contains(WidgetState.hovered)) {
-                                  return const Color(0xFF4A6FFF).withOpacity(0.05);
+                                  return AppTheme.primaryColor.withOpacity(0.05);
                                 }
                                 return null;
                               },
@@ -284,15 +284,15 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                         ),
                                         const SizedBox(width: 8),
                                         Container(
-                                          padding: const EdgeInsets.all(4),
+                                          padding: const EdgeInsets.all(6),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFF4A6FFF).withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(4),
+                                            color: AppTheme.primaryColor.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: const Icon(
                                             Icons.play_circle_outline,
                                             size: 16,
-                                            color: Color(0xFF4A6FFF),
+                                            color: AppTheme.primaryColor,
                                           ),
                                         ),
                                       ],
@@ -307,13 +307,13 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF4A6FFF).withOpacity(0.1),
+                                        color: AppTheme.primaryColor.withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Icon(
-                                        Icons.visibility,
+                                        Icons.visibility_outlined,
                                         size: 16,
-                                        color: Color(0xFF4A6FFF),
+                                        color: AppTheme.primaryColor,
                                       ),
                                     ),
                                     const SizedBox(width: 8),
@@ -323,7 +323,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: rank <= 10 ? FontWeight.bold : FontWeight.normal,
-                                          color: const Color(0xFF4A6FFF),
+                                          color: AppTheme.primaryColor,
                                         ),
                                       ),
                                     ),
@@ -337,13 +337,13 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFFF4A4A).withOpacity(0.1),
+                                        color: const Color(0xFFFF6B6B).withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Icon(
-                                        Icons.favorite,
+                                        Icons.thumb_up_outlined,
                                         size: 16,
-                                        color: Color(0xFFFF4A4A),
+                                        color: Color(0xFFFF6B6B),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
@@ -353,7 +353,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: rank <= 10 ? FontWeight.bold : FontWeight.normal,
-                                          color: const Color(0xFFFF4A4A),
+                                          color: const Color(0xFFFF6B6B),
                                         ),
                                       ),
                                     ),
@@ -372,21 +372,31 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                       children: item.keywords.map((keyword) {
                                         return Padding(
                                           padding: const EdgeInsets.only(right: 4),
-                                          child: Chip(
-                                             label: Text(keyword),
-                                             labelStyle: const TextStyle(fontSize: 12, color: Color(0xFF4A6FFF)),
-                                             backgroundColor: const Color(0xFF4A6FFF).withOpacity(0.1),
-                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                             side: BorderSide.none,
-                                          )
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.primaryColor.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: AppTheme.primaryColor.withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              keyword,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppTheme.primaryColor.withOpacity(0.8),
+                                              ),
+                                            ),
+                                          ),
                                         );
                                       }).toList(),
                                     ),
                                   ),
                                 ),
                               ),
-                               DataCell(
+                              DataCell(
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
@@ -394,22 +404,22 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                   ),
                                   decoration: BoxDecoration(
                                     color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
-                                        Icons.access_time,
-                                        size: 16,
+                                        Icons.access_time_rounded,
+                                        size: 14,
                                         color: Colors.grey.shade600,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        item.timestamp ?? 'N/A',
+                                        _formatDate(item.timestamp),
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                          color: Colors.grey.shade700,
                                         ),
                                       ),
                                     ],
@@ -429,7 +439,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
         ),
         if (_totalPages > 1)
           Padding(
-            padding: const EdgeInsets.only(bottom: 16.0, right: 24.0, left: 24.0),
+            padding: const EdgeInsets.symmetric(vertical: 16),
             child: PaginationControls(
               currentPage: _currentPage,
               totalPages: _totalPages,
@@ -440,202 +450,228 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildSentimentVisualizationTab() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+  String _formatDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      return DateFormat('yyyy-MM-dd').format(date);
+    } catch (_) {
+      return isoDate;
     }
-    if (_currentAnalysisResults.isEmpty) {
-      return const Center(child: Text('No analysis results available.'));
-    }
+  }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: _currentAnalysisResults.length,
-      itemBuilder: (context, index) {
-        final result = _currentAnalysisResults[index];
-        final item = result.youtubeData;
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16.0),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+  Widget _buildAnalysisTab() {
+    return _currentAnalysisResults.isEmpty
+        ? const Center(child: Text('분석 데이터가 없습니다.'))
+        : GridView.count(
+            crossAxisCount: 2,
+            children: [
+              Card(
+                elevation: 8,
+                shadowColor: Colors.black26,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.visibility_outlined, size: 14, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Text(
-                      '조회수: ${NumberFormat.compact().format(item.views)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(width: 12),
-                     Icon(Icons.thumb_up_alt_outlined, size: 14, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                     Text(
-                      '좋아요: ${NumberFormat.compact().format(item.likes)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                const Divider(height: 20),
-                if (result.keywords.isEmpty)
-                  const Text('키워드를 추출하지 못했습니다.')
-                else
-                  Wrap(
-                    spacing: 8.0,
-                    runSpacing: 4.0,
-                    children: result.keywords.map((kw) {
-                      Color sentimentColor;
-                      IconData sentimentIcon;
-                      switch (kw.sentiment) {
-                        case Sentiment.positive:
-                          sentimentColor = Colors.green;
-                          sentimentIcon = Icons.sentiment_satisfied_alt;
-                          break;
-                        case Sentiment.negative:
-                          sentimentColor = Colors.red;
-                           sentimentIcon = Icons.sentiment_very_dissatisfied;
-                           break;
-                        case Sentiment.neutral:
-                        default:
-                          sentimentColor = Colors.grey;
-                          sentimentIcon = Icons.sentiment_neutral;
-                          break;
-                      }
-                      return Chip(
-                        avatar: Icon(sentimentIcon, color: sentimentColor, size: 18),
-                        label: Text(
-                          '${kw.keyword} (${kw.score.toStringAsFixed(2)})',
-                          style: TextStyle(color: sentimentColor),
+                margin: const EdgeInsets.all(16),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '감정 분석',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2C3E50),
                         ),
-                        backgroundColor: sentimentColor.withOpacity(0.1),
-                        side: BorderSide.none,
-                      );
-                    }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: _currentAnalysisResults.length,
+                          itemBuilder: (context, index) {
+                            final result = _currentAnalysisResults[index];
+                            // 감정 분석 시각화 구현
+                            return ListTile(
+                              title: Text(
+                                result.youtubeData.title,
+                                style: const TextStyle(fontSize: 14),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Wrap(
+                                spacing: 4,
+                                children: result.keywords.map((k) {
+                                  final color = _getSentimentColor(k.sentiment);
+                                  return Chip(
+                                    label: Text(k.keyword),
+                                    labelStyle: TextStyle(
+                                      color: color,
+                                      fontSize: 12,
+                                    ),
+                                    backgroundColor: color.withOpacity(0.1),
+                                    visualDensity: VisualDensity.compact,
+                                    side: BorderSide(color: color.withOpacity(0.3)),
+                                  );
+                                }).toList(),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TrendsPieChart(trends: _trends, itemCount: 10),
+              ),
+            ],
+          );
+  }
+
+  Color _getSentimentColor(Sentiment sentiment) {
+    switch (sentiment) {
+      case Sentiment.positive:
+        return const Color(0xFF25C685);
+      case Sentiment.negative:
+        return const Color(0xFFFF6B6B);
+      case Sentiment.neutral:
+      default:
+        return const Color(0xFF94A3B8);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-         title: const Text('YouTube 트렌드 분석', style: TextStyle(fontWeight: FontWeight.bold)),
-         centerTitle: false,
-         actions: [
-           IconButton(
-             icon: const Icon(Icons.refresh),
-             onPressed: _loadTrends,
-             tooltip: '새로고침',
-           )
-         ],
-       ),
-      body: Column(
-         crossAxisAlignment: CrossAxisAlignment.stretch,
-         children: [
-           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: '관련 트렌드 검색 (기본: 게임)...',
-                      prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8)),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.analytics_outlined,
+                        color: AppTheme.primaryColor,
+                        size: 28,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF4A6FFF), width: 1.5),
+                      SizedBox(width: 12),
+                      Text(
+                        'YouTube 트렌드 분석',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2C3E50),
+                        ),
                       ),
-                    ),
-                    onChanged: (value) => _searchQuery = value,
-                    onSubmitted: (_) => _searchTrends(),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton.icon(
-                  onPressed: _searchTrends,
-                  icon: const Icon(Icons.search, size: 18),
-                  label: const Text('검색'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4A6FFF),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 24),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            decoration: const InputDecoration(
+                              hintText: '검색어를 입력하세요',
+                              border: InputBorder.none,
+                              icon: Icon(Icons.search, color: AppTheme.primaryColor),
+                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                _searchQuery = value;
+                              });
+                            },
+                            onSubmitted: (_) => _searchTrends(),
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: _searchTrends,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                          child: const Text('검색'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-           Container(
-             margin: const EdgeInsets.symmetric(horizontal: 24.0).copyWith(bottom: 16.0),
-             padding: const EdgeInsets.all(4),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-             child: TabBar(
+              child: TabBar(
                 controller: _tabController,
-                indicator: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF4A6FFF), Color(0xFF6B8AFF)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: const Color(0xFF94A3B8),
-                labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                dividerColor: Colors.transparent,
+                indicatorColor: AppTheme.primaryColor,
+                indicatorWeight: 3,
+                labelColor: AppTheme.primaryColor,
+                unselectedLabelColor: AppTheme.secondaryColor,
                 indicatorSize: TabBarIndicatorSize.tab,
                 tabs: const [
-                  Tab(icon: Icon(Icons.table_chart_outlined), text: '데이터 테이블'),
-                  Tab(icon: Icon(Icons.bar_chart_outlined), text: '차트 분석'),
-                  Tab(icon: Icon(Icons.psychology_outlined), text: '키워드 시각화'),
-                  Tab(text: '감성 분석'),
+                  Tab(
+                    icon: Icon(Icons.table_chart_outlined),
+                    text: '트렌드 테이블',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.insights_outlined),
+                    text: '분석',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.hub_outlined),
+                    text: '네트워크',
+                  ),
                 ],
               ),
-           ),
-           Expanded(
-             child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildDataTable(context),
-                  TrendsPieChart(trends: _trends),
-                  KeywordNetworkGraph(analysisResults: _currentAnalysisResults),
-                  _buildSentimentVisualizationTab(),
-                ],
-              ),
-           ),
-         ],
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildDataTable(context),
+                        _buildAnalysisTab(),
+                        KeywordNetworkGraph(analysisResults: _currentAnalysisResults),
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

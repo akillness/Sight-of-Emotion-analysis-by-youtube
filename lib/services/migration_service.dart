@@ -1,4 +1,3 @@
-import 'package:idb_shim/idb_shim.dart';
 import 'package:idb_shim/idb_browser.dart';
 import '../models/database.dart';
 import 'package:drift/drift.dart';
