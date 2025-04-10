@@ -13,8 +13,10 @@ import '../widgets/pagination_controls.dart';
 import '../services/database_helper.dart';
 import '../widgets/app_theme.dart';
 
-// 추가: 감성 정렬 타입 정의
-enum SentimentSortType { all, positive, negative, neutral }
+// Define emotion labels from the model + 'all'
+const List<String> _emotionFilters = [
+  'all', 'joy', 'sadness', 'anger', 'surprise', 'fear', 'disgust', 'neutral'
+];
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key});
@@ -43,8 +45,8 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
   late TabController _tabController;
   List<VideoAnalysisResult> _currentAnalysisResults = [];
   
-  // 추가: 감성 정렬 상태 변수
-  SentimentSortType _selectedSentimentSort = SentimentSortType.all;
+  // Changed state variable to filter by emotion string
+  String _selectedEmotionFilter = _emotionFilters[0]; // Default to 'all'
 
   @override
   void initState() {
@@ -416,17 +418,6 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     }
   }
 
-  // Helper function to get the max score for a specific sentiment in a result
-  double _getMaxSentimentScore(VideoAnalysisResult result, Sentiment targetSentiment) {
-    double maxScore = 0.0; 
-    for (var kw in result.keywords) {
-      if (kw.sentiment == targetSentiment) {
-        maxScore = max(maxScore, kw.score);
-      }
-    }
-    return maxScore;
-  }
-
   Widget _buildAnalysisTab() {
     if (_currentAnalysisResults.isEmpty) {
       return const Center(
@@ -437,40 +428,20 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
       );
     }
     
-    // Limit the number of results
     final baseResults = _currentAnalysisResults.take(20).toList();
 
-    // 필터링 및 정렬된 결과 리스트 계산
+    // 필터링 및 정렬된 결과 리스트 계산 (수정)
     List<VideoAnalysisResult> filteredAndSortedResults;
-    if (_selectedSentimentSort == SentimentSortType.all) {
+    if (_selectedEmotionFilter == 'all') {
       // 'all' 선택 시 조회수 기준으로 정렬
       filteredAndSortedResults = List.from(baseResults)
         ..sort((a, b) => b.youtubeData.views.compareTo(a.youtubeData.views));
     } else {
-      // 특정 감성 타입 선택 시 필터링 및 조회수 기준 정렬
-      Sentiment targetSentiment;
-      switch (_selectedSentimentSort) {
-        case SentimentSortType.positive: targetSentiment = Sentiment.positive; break;
-        case SentimentSortType.negative: targetSentiment = Sentiment.negative; break;
-        case SentimentSortType.neutral: targetSentiment = Sentiment.neutral; break;
-        default: targetSentiment = Sentiment.neutral; // Should not happen
-      }
-      
-      filteredAndSortedResults = baseResults.where((result) {
-        // Check if the video contains at least one keyword with the target sentiment
-        return result.keywords.any((kw) => kw.sentiment == targetSentiment);
-      }).toList()
-        // Sort by the maximum score of the target sentiment (descending)
-        ..sort((a, b) {
-            double scoreA = _getMaxSentimentScore(a, targetSentiment);
-            double scoreB = _getMaxSentimentScore(b, targetSentiment);
-            // If scores are equal, fall back to view count as a secondary sort
-            int scoreComparison = scoreB.compareTo(scoreA);
-            if (scoreComparison == 0) {
-                return b.youtubeData.views.compareTo(a.youtubeData.views);
-            }
-            return scoreComparison;
-        });
+      // 특정 감성 선택 시 필터링 및 조회수 기준 정렬
+      filteredAndSortedResults = baseResults
+        .where((result) => result.overallEmotion == _selectedEmotionFilter)
+        .toList()
+        ..sort((a, b) => b.youtubeData.views.compareTo(a.youtubeData.views)); // Sort filtered results by views
     }
 
     return Column(
@@ -487,34 +458,31 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                   borderRadius: BorderRadius.circular(8.0),
                 ),
                 child: DropdownButtonHideUnderline(
-                  child: DropdownButton<SentimentSortType>(
-                    value: _selectedSentimentSort,
-                    dropdownColor: AppTheme.cardColor, // 드롭다운 메뉴 배경색
-                    style: const TextStyle(color: AppTheme.textColor, fontSize: 14), // 드롭다운 텍스트 스타일
+                  child: DropdownButton<String>(
+                    value: _selectedEmotionFilter,
+                    dropdownColor: AppTheme.cardColor,
+                    style: const TextStyle(color: AppTheme.textColor, fontSize: 14),
                     icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primaryColor),
-                    onChanged: (SentimentSortType? newValue) {
+                    onChanged: (String? newValue) { // Changed type to String?
                       if (newValue != null) {
                         setState(() {
-                          _selectedSentimentSort = newValue;
+                          _selectedEmotionFilter = newValue;
                         });
                       }
                     },
-                    items: SentimentSortType.values
-                        .map<DropdownMenuItem<SentimentSortType>>((SentimentSortType value) {
-                      return DropdownMenuItem<SentimentSortType>(
+                    items: _emotionFilters // Use the list of emotion strings
+                        .map<DropdownMenuItem<String>>((String value) {
+                      return DropdownMenuItem<String>(
                         value: value,
                         child: Row(
                           children: [
                             Icon(
-                              value == SentimentSortType.positive ? Icons.thumb_up
-                              : value == SentimentSortType.negative ? Icons.thumb_down
-                              : value == SentimentSortType.neutral ? Icons.thumbs_up_down
-                              : Icons.list,
-                              color: _getSentimentColorForSort(value),
+                              _getEmotionIcon(value), // Use helper for icon
+                              color: _getEmotionColor(value), // Use helper for color
                               size: 18,
                             ),
                             const SizedBox(width: 8),
-                            Text(value.toString().split('.').last.capitalize()),
+                            Text(value.capitalize()),
                           ],
                         ),
                       );
@@ -550,7 +518,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                         child: filteredAndSortedResults.isEmpty
                         ? Center(
                             child: Text(
-                              '${_selectedSentimentSort.toString().split('.').last.capitalize()} 감성의 비디오가 없습니다.', 
+                              '${_selectedEmotionFilter.capitalize()} 감성의 비디오가 없습니다.', 
                               style: const TextStyle(color: AppTheme.textColor, fontSize: 14)
                             )
                           )
@@ -562,21 +530,6 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                               final result = filteredAndSortedResults[index]; 
                               final youtubeData = result.youtubeData;
                               
-                              // 대표 감정 계산 (이미 필터링 시 사용했으나 아이콘 표시 위해 유지)
-                              int positiveCount = 0, negativeCount = 0, neutralCount = 0;
-                              for (var kw in result.keywords) {
-                                switch (kw.sentiment) {
-                                  case Sentiment.positive: positiveCount++; break;
-                                  case Sentiment.negative: negativeCount++; break;
-                                  case Sentiment.neutral: neutralCount++; break;
-                                }
-                              }
-                              final overallSentiment = (positiveCount > negativeCount && positiveCount > neutralCount)
-                                  ? Sentiment.positive
-                                  : (negativeCount > positiveCount && negativeCount > neutralCount)
-                                      ? Sentiment.negative
-                                      : Sentiment.neutral;
-                              
                               return Card(
                                 elevation: 2,
                                 margin: const EdgeInsets.only(bottom: 8),
@@ -585,43 +538,29 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                                 ),
                                 child: ListTile(
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  leading: Container( // 대표 감정 아이콘
+                                  leading: Container( // 대표 감정 아이콘 (overallEmotion 사용)
                                     width: 36, height: 36,
                                     decoration: BoxDecoration(
-                                      color: _getSentimentColor(overallSentiment).withOpacity(0.2),
+                                      color: _getEmotionColor(result.overallEmotion).withOpacity(0.2),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Center(child: Icon(
-                                      overallSentiment == Sentiment.positive ? Icons.thumb_up
-                                      : overallSentiment == Sentiment.negative ? Icons.thumb_down
-                                      : Icons.thumbs_up_down,
-                                      color: _getSentimentColor(overallSentiment), size: 18)
+                                      _getEmotionIcon(result.overallEmotion), // Use helper for icon
+                                      color: _getEmotionColor(result.overallEmotion), size: 18)
                                     ),
                                   ),
                                   title: Text( // 비디오 제목
                                     youtubeData.title.length > 30 ? '${youtubeData.title.substring(0, 30)}...' : youtubeData.title,
                                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textColor),
                                   ),
-                                  subtitle: result.keywords.isEmpty // 필터링 없이 원래 키워드 표시
-                                    ? Text('키워드 없음', style: TextStyle(fontSize: 10, color: AppTheme.textColor.withOpacity(0.7)))
-                                    : SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: Row(
-                                          children: [
-                                            // 필터링 없이 비디오의 원래 키워드 표시 (최대 5개)
-                                            for (var kw in result.keywords.take(5)) 
-                                              Padding(
-                                                padding: const EdgeInsets.only(right: 4),
-                                                child: Chip(
-                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  visualDensity: VisualDensity.compact,
-                                                  label: Text(kw.keyword, style: TextStyle(fontSize: 10, color: _getSentimentColor(kw.sentiment))),
-                                                  backgroundColor: _getSentimentColor(kw.sentiment).withOpacity(0.1),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
+                                  subtitle: Text( // overallEmotion 표시 (수정)
+                                    '분석된 감정: ${result.overallEmotion.capitalize()}',
+                                    style: TextStyle(
+                                      fontSize: 12, 
+                                      fontWeight: FontWeight.w500,
+                                      color: _getEmotionColor(result.overallEmotion)
+                                    )
+                                  ),
                                   trailing: IconButton( // 비디오 링크
                                     icon: const Icon(Icons.open_in_new, size: 16), 
                                     color: AppTheme.primaryColor,
@@ -648,26 +587,33 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     );
   }
 
-  // 정렬 타입에 따른 색상 반환 (선택된 칩 표시용)
-  Color _getSentimentColorForSort(SentimentSortType type) {
-    switch (type) {
-      case SentimentSortType.positive: return const Color(0xFF1DB954);
-      case SentimentSortType.negative: return AppTheme.primaryColor;
-      case SentimentSortType.neutral: return AppTheme.textColor;
-      case SentimentSortType.all: return Colors.blueGrey; // 전체 선택 시 색상
+  // Helper to get color based on emotion string
+  Color _getEmotionColor(String emotion) {
+    switch (emotion.toLowerCase()) {
+      case 'joy': return Colors.amber;
+      case 'sadness': return Colors.blue;
+      case 'anger': return Colors.red;
+      case 'surprise': return Colors.purple;
+      case 'fear': return Colors.deepPurple;
+      case 'disgust': return Colors.brown;
+      case 'neutral': return AppTheme.textColor; 
+      case 'all': return Colors.blueGrey;
+      default: return AppTheme.textColor; 
     }
   }
 
-  // 기존 감성 색상 함수
-  Color _getSentimentColor(Sentiment sentiment) {
-    switch (sentiment) {
-      case Sentiment.positive:
-        return const Color(0xFF1DB954); // Spotify Green
-      case Sentiment.negative:
-        return AppTheme.primaryColor; // Netflix Red
-      case Sentiment.neutral:
-      default:
-        return AppTheme.textColor; // White
+  // Helper to get icon based on emotion string
+  IconData _getEmotionIcon(String emotion) {
+     switch (emotion.toLowerCase()) {
+      case 'joy': return Icons.sentiment_very_satisfied;
+      case 'sadness': return Icons.sentiment_very_dissatisfied;
+      case 'anger': return Icons.whatshot;
+      case 'surprise': return Icons.priority_high;
+      case 'fear': return Icons.security; // Or Icons.shield
+      case 'disgust': return Icons.sick_outlined;
+      case 'neutral': return Icons.sentiment_neutral;
+      case 'all': return Icons.list;
+      default: return Icons.question_mark;
     }
   }
 

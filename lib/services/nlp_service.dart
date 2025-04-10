@@ -11,6 +11,9 @@ class NlpService {
   // Maximum number of keywords to analyze per video
   static const int MAX_KEYWORDS_PER_VIDEO = 5;
 
+  // Default constructor (no DatabaseService)
+  NlpService(); 
+
   // Method updated to analyze YoutubeData titles
   Future<List<VideoAnalysisResult>> analyzeVideoTitles(List<YoutubeData> youtubeItems) async {
     if (kDebugMode) {
@@ -29,6 +32,9 @@ class NlpService {
       // Always use TextAnalyzer to get keywords and scores for the title
       Map<String, double> extractedData = await TextAnalyzer.extractKeywords(item.title);
 
+      // Analyze overall emotion for the title
+      final analyzedEmotion = await TextAnalyzer.analyzeEmotion(item.title);
+
       // Create KeywordSentiment objects directly from the extracted data
       List<KeywordSentiment> keywords = extractedData.entries.map((entry) {
         String keyword = entry.key;
@@ -36,12 +42,10 @@ class NlpService {
         String keywordLower = keyword.toLowerCase();
 
         Sentiment sentiment = _calculateSentiment(keywordLower);
-        Emotion emotion = _calculateEmotion(keywordLower);
         
         return KeywordSentiment(
           keyword: keyword, // Keep original casing for display
           sentiment: sentiment,
-          emotion: emotion,
           score: score, // Use the score directly
         );
       }).toList();
@@ -49,7 +53,11 @@ class NlpService {
       // Update the item's keywords list based on the analysis (optional, but good for consistency)
       item.keywords = extractedData.keys.toList();
 
-      results.add(VideoAnalysisResult(youtubeData: item, keywords: keywords)); 
+      results.add(VideoAnalysisResult(
+        youtubeData: item, 
+        keywords: keywords,
+        overallEmotion: analyzedEmotion, // Pass the analyzed emotion
+      )); 
     }
     
     if (kDebugMode) {
@@ -98,47 +106,6 @@ class NlpService {
     return Sentiment.neutral;
   }
   
-  Emotion _calculateEmotion(String keyword) {
-    // Mapping keywords to emotions
-    final emotionMap = {
-      Emotion.happiness: [
-        'happy', 'joy', 'fun', 'laugh', 'exciting', 'excited', 'smile', 'pleasure', 'delight',
-        '행복', '기쁨', '즐거움', '웃음', '신남', '미소', '좋아', '좋다'
-      ],
-      Emotion.sadness: [
-        'sad', 'cry', 'tear', 'depressed', 'sorrow', 'grief', 'unhappy', 'miserable', 'mourn',
-        '슬픔', '울음', '눈물', '우울', '비탄', '비참', '불행', '슬퍼'
-      ],
-      Emotion.fear: [
-        'fear', 'scared', 'terrified', 'horror', 'panic', 'dread', 'afraid', 'fright', 'terror',
-        '공포', '무서움', '겁', '두려움', '공황', '불안'
-      ],
-      Emotion.anger: [
-        'anger', 'angry', 'mad', 'furious', 'rage', 'hate', 'hostile', 'irritated', 'annoyed',
-        '분노', '화', '화남', '격노', '증오', '적대', '짜증'
-      ],
-      Emotion.anticipation: [
-        'disgust', 'gross', 'yuck', 'revolting', 'repulsive', 'nasty', 'distaste', 'aversion',
-        '역겨움', '혐오', '구역질', '메스꺼움', '불쾌', '싫음'
-      ],
-      Emotion.surprise: [
-        'surprise', 'shocked', 'amazed', 'astonished', 'stunned', 'startled', 'unexpected',
-        '놀람', '충격', '경악', '깜짝', '예상치 못한'
-      ],
-    };
-    
-    for (var entry in emotionMap.entries) {
-      for (var word in entry.value) {
-        if (keyword.contains(word)) {
-          return entry.key;
-        }
-      }
-    }
-    
-    // Default to neutral if no emotion is matched
-    return Emotion.neutral;
-  }
-  
   // Optional: Method to slightly adjust score for visual purposes (e.g., randomness)
   // If you want the score *exactly* as from the transformer, remove this call
   /*
@@ -152,4 +119,6 @@ class NlpService {
     return adjustedScore.clamp(-1.0, 1.0); // Clamp to valid range
   }
   */
+
+  // REMOVED faulty analyzeVideos method
 } 

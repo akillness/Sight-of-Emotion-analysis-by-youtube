@@ -1,21 +1,23 @@
 /// 텍스트 분석 유틸리티 클래스 - 향상된 키워드 추출
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:http/http.dart' as http; // http 패키지 다시 사용
 import 'package:flutter/foundation.dart';
 import 'dart:collection'; // Import for LinkedHashMap
 import '../config/api_keys.dart'; // Import API keys
 
 class TextAnalyzer {
-  // API 엔드포인트 URL (klue/roberta-base 모델 사용)
-  static const String _apiUrl = 'https://api-inference.huggingface.co/models/klue/roberta-base';
+  // 키워드 추출 API 엔드포인트 (기존)
+  static const String _keywordApiUrl = 'https://api-inference.huggingface.co/models/klue/roberta-base';
+  // 감정 분석 API 엔드포인트 (새 모델)
+  static const String _emotionApiUrl = 'https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base';
   
   // HuggingFace API 키 (설정 파일에서 가져옴)
   static const String _apiKey = huggingFaceApiKey;
   
-  // API 호출 타임아웃 (짧게 설정)
-  static const Duration _apiTimeout = Duration(seconds: 5);
+  // API 호출 타임아웃
+  static const Duration _keywordApiTimeout = Duration(seconds: 5);
+  static const Duration _emotionApiTimeout = Duration(seconds: 5); // 감정 분석 타임아웃 추가
 
   /// 텍스트에서 키워드 추출 (API 시도 후 로컬 폴백)
   static Future<Map<String, double>> extractKeywords(String text) async {
@@ -38,6 +40,9 @@ class TextAnalyzer {
       return {};
     }
 
+    // 미리 텍스트 분할 (최적화)
+    final wordsInText = normalizedText.split(' ');
+
     final candidates = _extractCandidateKeywords(normalizedText);
     if (kDebugMode) {
         print('TextAnalyzer: Found ${candidates.length} candidate keywords: ${candidates.take(10).join(', ')}...');
@@ -51,7 +56,7 @@ class TextAnalyzer {
     }
 
     // Transformer 모델 API를 사용하여 순위 매기기 시도 (빠른 폴백 포함)
-    final rankedScores = await _rankKeywordsWithTransformer(candidates, normalizedText);
+    final rankedScores = await _rankKeywordsWithTransformer(candidates, normalizedText, wordsInText);
 
     final top5Keywords = Map.fromEntries(rankedScores.entries.take(5));
     if (kDebugMode) {
@@ -60,10 +65,11 @@ class TextAnalyzer {
     return top5Keywords;
   }
   
-  /// Transformer 모델 API를 사용해 키워드 중요도 계산 시도 및 폴백 처리
+  /// Transformer 모델 API를 사용해 키워드 중요도 계산 시도 및 폴백 처리 (최적화)
   static Future<Map<String, double>> _rankKeywordsWithTransformer(
     List<String> candidates, 
-    String originalText
+    String originalText,
+    List<String> wordsInText // 분할된 텍스트 전달 (최적화)
   ) async {
     final scores = <String, double>{};
     final topCandidates = candidates.take(5).toList(); // 상위 5개만 API 시도
@@ -71,7 +77,7 @@ class TextAnalyzer {
 
     if (topCandidates.isNotEmpty && _apiKey.isNotEmpty && !_apiKey.contains('YOUR')) { // API 키가 유효할 때만 시도
         if (kDebugMode) {
-            print('TextAnalyzer: Attempting API batch ranking for top ${topCandidates.length} candidates using $_apiUrl');
+            print('TextAnalyzer: Attempting API batch ranking for top ${topCandidates.length} candidates using $_keywordApiUrl'); // URL 변수 사용
         }
         try {
             // 배치 입력 생성 (키워드를 [MASK]로 대체)
@@ -81,7 +87,7 @@ class TextAnalyzer {
             }).toList();
             
             final response = await http.post(
-                Uri.parse(_apiUrl),
+                Uri.parse(_keywordApiUrl), // URL 변수 사용
                 headers: {
                 'Authorization': 'Bearer $_apiKey',
                 'Content-Type': 'application/json',
@@ -90,13 +96,13 @@ class TextAnalyzer {
                 'inputs': batchInputs,
                 'options': {'wait_for_model': true} 
                 }),
-            ).timeout(_apiTimeout); // 짧은 타임아웃 적용
+            ).timeout(_keywordApiTimeout); // 타임아웃 변수 사용
 
             if (response.statusCode == 200) {
                 final results = jsonDecode(response.body);
                 if (results is List && results.length == topCandidates.length) {
                     if (kDebugMode) {
-                        print('TextAnalyzer: API batch request successful.');
+                        print('TextAnalyzer: Keyword API batch request successful.');
                     }
                     for (int i = 0; i < results.length; i++) {
                         final keyword = topCandidates[i];
@@ -123,20 +129,20 @@ class TextAnalyzer {
                     apiSuccess = true; // API 성공 플래그 설정
                 } else {
                     if (kDebugMode) {
-                        print('TextAnalyzer: API batch response format mismatch (Expected List[${topCandidates.length}], Got: ${results.runtimeType}).');
+                        print('TextAnalyzer: Keyword API batch response format mismatch (Expected List[${topCandidates.length}], Got: ${results.runtimeType}).');
                     }
                 }
             } else {
                 if (kDebugMode) {
-                    print('TextAnalyzer: API batch request failed with status ${response.statusCode}.');
+                    print('TextAnalyzer: Keyword API batch request failed with status ${response.statusCode}.');
                 }
             }
         } catch (e) {
             if (kDebugMode) {
                 if (e is TimeoutException) {
-                    print('TextAnalyzer: API batch request timed out after $_apiTimeout.');
+                    print('TextAnalyzer: Keyword API batch request timed out after $_keywordApiTimeout.'); // 타임아웃 변수 사용
                 } else {
-                    print('TextAnalyzer: API batch request error: $e');
+                    print('TextAnalyzer: Keyword API batch request error: $e'); // 명확화
                 }
             }
         }
@@ -146,23 +152,21 @@ class TextAnalyzer {
         }
     }
 
-    // API 호출 실패 시 또는 나머지 후보들에 대해 로컬 점수 계산
+    // API 호출 실패 시 또는 나머지 후보들에 대해 로컬 점수 계산 (최적화)
     if (!apiSuccess) {
         if (kDebugMode) {
-            print('TextAnalyzer: API call failed or skipped. Calculating all scores using local rules.');
+            print('TextAnalyzer: Keyword API call failed or skipped. Calculating all scores using local rules.');
         }
-        // 모든 후보에 대해 로컬 점수 계산
         for (final keyword in candidates) {
-            scores[keyword] = _calculateBasicScore(keyword, originalText);
+            scores[keyword] = _calculateBasicScore(keyword, originalText, wordsInText);
         }
     } else {
         if (kDebugMode) {
-            print('TextAnalyzer: API call successful for top ${topCandidates.length}. Calculating remaining scores locally.');
+            print('TextAnalyzer: Keyword API call successful for top ${topCandidates.length}. Calculating remaining scores locally.');
         }
-        // API 호출에서 제외된 나머지 후보들에 대해 로컬 점수 계산
         for (final keyword in candidates) {
             if (!scores.containsKey(keyword)) {
-                scores[keyword] = _calculateBasicScore(keyword, originalText);
+                scores[keyword] = _calculateBasicScore(keyword, originalText, wordsInText);
             }
         }
     }
@@ -179,38 +183,6 @@ class TextAnalyzer {
     double score = keyword.length * 0.05; // 길이 가중치
     if (keyword.contains(RegExp(r'[가-힣]')) && keyword.contains(RegExp(r'[a-zA-Z]'))) {
       score += 0.5; // 복합어 가중치
-    }
-    return score;
-  }
-  
-  /// 로컬 규칙 기반으로만 키워드 점수 계산 및 정렬된 맵 반환 (폴백용)
-  static Map<String, double> _calculateLocalScores(
-      List<String> candidates, String text) {
-    final scores = <String, double>{};
-    if (kDebugMode) {
-        print('TextAnalyzer: Calculating basic scores for ${candidates.length} candidates.');
-    }
-    for (final keyword in candidates) {
-      scores[keyword] = _calculateBasicScore(keyword, text);
-    }
-    final sortedEntries = scores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    if (kDebugMode) {
-        print('TextAnalyzer: Finished calculating local scores.');
-    }
-    return LinkedHashMap.fromEntries(sortedEntries);
-  }
-
-  /// 기본 점수 계산 (API 호출 없이)
-  static double _calculateBasicScore(String keyword, String text) {
-    double score = 0;
-    score += keyword.length * 0.2; // 길이
-    if (text.startsWith(keyword)) score += 3; // 시작 위치
-    if (text.endsWith(keyword)) score += 2; // 끝 위치
-    final frequency = text.split(' ').where((w) => w.contains(keyword)).length; // 빈도
-    score += frequency * 0.8;
-    if (keyword.contains(RegExp(r'[가-힣]')) && keyword.contains(RegExp(r'[a-zA-Z]'))) { // 복합어
-      score += 2.0;
     }
     return score;
   }
@@ -277,5 +249,87 @@ class TextAnalyzer {
         .map((m) => m.group(0)!)
         .where((word) => word.length >= 4)
         .toList();
+  }
+
+  /// 기본 점수 계산 (API 호출 없이) (최적화)
+  static double _calculateBasicScore(String keyword, String text, List<String> wordsInText) {
+    double score = 0;
+    score += keyword.length * 0.2; // 길이
+    if (text.startsWith(keyword)) score += 3; // 시작 위치
+    if (text.endsWith(keyword)) score += 2; // 끝 위치
+    final frequency = wordsInText.where((w) => w.contains(keyword)).length; // 최적화된 방식
+    score += frequency * 0.8;
+    if (keyword.contains(RegExp(r'[가-힣]')) && keyword.contains(RegExp(r'[a-zA-Z]'))) { // 복합어
+      score += 2.0;
+    }
+    return score;
+  }
+
+  /// 텍스트 감정 분석 (영어 레이블 사용)
+  static Future<String> analyzeEmotion(String text) async {
+    if (text.isEmpty) {
+      return 'neutral'; // 빈 텍스트는 중립으로 처리
+    }
+    
+    if (kDebugMode) {
+      print('TextAnalyzer: Analyzing emotion for text (length: ${text.length})');
+       if (text.length < 100) {
+        print('TextAnalyzer: Input text: "$text"');
+      }
+    }
+
+    if (_apiKey.isEmpty || _apiKey.contains('YOUR')) {
+       if (kDebugMode) {
+        print('TextAnalyzer: Skipping emotion analysis (API key invalid). Returning neutral.');
+      }
+      return 'neutral';
+    }
+
+    try {
+      final response = await http.post(
+        Uri.parse(_emotionApiUrl),
+        headers: {
+          'Authorization': 'Bearer $_apiKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'inputs': text,
+          'options': {'wait_for_model': true}
+        }),
+      ).timeout(_emotionApiTimeout);
+
+      if (response.statusCode == 200) {
+        final results = jsonDecode(response.body);
+        // 모델 응답 형식: [[{'label': 'joy', 'score': 0.9}, ...]]
+        if (results is List && results.isNotEmpty && results[0] is List && results[0].isNotEmpty) {
+          final topResult = results[0][0];
+          if (topResult is Map && topResult.containsKey('label')) {
+            final label = topResult['label'] as String;
+            if (kDebugMode) {
+              print('TextAnalyzer: Emotion analysis successful. Top emotion: $label');
+            }
+            return label; // 영어 레이블 반환
+          }
+        }
+        if (kDebugMode) {
+            print('TextAnalyzer: Emotion API response format unexpected: $results');
+        }
+        return 'neutral'; // 예상치 못한 형식
+      } else {
+        if (kDebugMode) {
+          print('TextAnalyzer: Emotion API request failed with status ${response.statusCode}. Body: ${response.body}');
+        }
+        return 'neutral'; // API 실패
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        if (e is TimeoutException) {
+           print('TextAnalyzer: Emotion API request timed out after $_emotionApiTimeout.');
+        } else {
+           print('TextAnalyzer: Emotion API request error: $e');
+        }
+      }
+      return 'neutral'; // 오류 발생
+    }
   }
 } 
