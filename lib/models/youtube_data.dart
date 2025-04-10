@@ -5,7 +5,7 @@ class YoutubeData {
   final String videoId;
   final int likes;
   final int views;
-  final List<String> keywords;
+  List<String> keywords;
   final String timestamp;
 
   YoutubeData({
@@ -28,8 +28,15 @@ class YoutubeData {
       videoId: videoId,
       likes: int.tryParse(statistics['likeCount']?.toString() ?? '0') ?? 0,
       views: int.tryParse(statistics['viewCount']?.toString() ?? '0') ?? 0,
-      keywords: TextAnalyzer.extractKeywords(title),
+      keywords: [], // Initialize with empty list
       timestamp: snippet['publishedAt'] as String,
     );
+  }
+  
+  // Method to extract keywords asynchronously
+  Future<void> extractKeywordsFromTitle() async {
+    if (keywords.isEmpty) {
+      keywords = await TextAnalyzer.extractKeywords(title);
+    }
   }
 } 

@@ -117,10 +117,9 @@ class AppTheme {
     iconTheme: const IconThemeData(
       color: textColor,
     ),
-    colorScheme: ColorScheme.dark(
+    colorScheme: const ColorScheme.dark(
       primary: primaryColor,
       secondary: secondaryColor,
-      background: backgroundColor,
       surface: cardColor,
       onSurface: textColor,
     ),

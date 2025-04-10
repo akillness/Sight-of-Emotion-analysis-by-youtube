@@ -247,17 +247,17 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 16.0, top: 8.0, bottom: 16.0),
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, top: 8.0, bottom: 16.0),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.hub,
                     color: AppTheme.primaryColor,
                     size: 24,
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
+                  SizedBox(width: 8),
+                  Text(
                     '키워드 네트워크 분석',
                     style: TextStyle(
                       fontSize: 20,

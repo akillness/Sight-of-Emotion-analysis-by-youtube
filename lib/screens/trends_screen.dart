@@ -196,7 +196,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                       headingRowHeight: 56,
                       dataRowMinHeight: 70,
                       dataRowMaxHeight: 90,
-                      headingRowColor: MaterialStateProperty.all(
+                      headingRowColor: WidgetStateProperty.all(
                         AppTheme.secondaryColor,
                       ),
                       headingTextStyle: const TextStyle(
@@ -225,9 +225,9 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                         }
 
                         return DataRow(
-                          color: MaterialStateProperty.resolveWith<Color?>(
-                            (Set<MaterialState> states) {
-                              if (states.contains(MaterialState.hovered)) {
+                          color: WidgetStateProperty.resolveWith<Color?>(
+                            (Set<WidgetState> states) {
+                              if (states.contains(WidgetState.hovered)) {
                                 return AppTheme.secondaryColor;
                               }
                               return null;

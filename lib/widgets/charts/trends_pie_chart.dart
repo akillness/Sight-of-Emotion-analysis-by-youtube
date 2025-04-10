@@ -158,7 +158,7 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
                     },
                   ),
                   if (topItems.isEmpty)
-                     Center(
+                     const Center(
                       child: Text(
                         '데이터가 없습니다',
                         style: TextStyle( // Use AppTheme subtitle color
@@ -245,7 +245,7 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [
-                                      Icon(
+                                      const Icon(
                                         Icons.visibility_outlined,
                                         size: 14, // Slightly larger icon
                                         // Use AppTheme subtitle color
@@ -254,13 +254,13 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
                                       const SizedBox(width: 4),
                                       Text(
                                         NumberFormat.compact().format(entry.value.views),
-                                        style: TextStyle( // Use AppTheme subtitle color
+                                        style: const TextStyle( // Use AppTheme subtitle color
                                           fontSize: 12,
                                           color: AppTheme.subtitleColor,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
-                                      Icon(
+                                      const Icon(
                                         Icons.thumb_up_outlined,
                                         size: 14, // Slightly larger icon
                                         // Use AppTheme subtitle color
@@ -269,7 +269,7 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
                                       const SizedBox(width: 4),
                                       Text(
                                         NumberFormat.compact().format(entry.value.likes),
-                                        style: TextStyle( // Use AppTheme subtitle color
+                                        style: const TextStyle( // Use AppTheme subtitle color
                                           fontSize: 12,
                                           color: AppTheme.subtitleColor,
                                         ),
@@ -323,7 +323,7 @@ class _TrendsPieChartState extends State<TrendsPieChart> with SingleTickerProvid
         ),
         child: Text(
           item.title.length > 15 ? '${item.title.substring(0, 12)}...' : item.title,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.bold,
             color: AppTheme.textColor, // Use theme text color

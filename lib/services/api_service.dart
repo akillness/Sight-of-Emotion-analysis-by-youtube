@@ -21,6 +21,11 @@ class ApiService {
             .map((item) => YoutubeData.fromVideoItem(item))
             .toList();
             
+        // Extract keywords asynchronously
+        for (final item in items) {
+          await item.extractKeywordsFromTitle();
+        }
+            
         // 데이터베이스에 저장
         for (final item in items) {
           await _dbHelper.insertTrend(item);
@@ -94,6 +99,11 @@ class ApiService {
         final items = (videosData['items'] as List)
             .map((item) => YoutubeData.fromVideoItem(item))
             .toList();
+            
+        // Extract keywords asynchronously
+        for (final item in items) {
+          await item.extractKeywordsFromTitle();
+        }
             
         // 데이터베이스에 저장
         for (final item in items) {

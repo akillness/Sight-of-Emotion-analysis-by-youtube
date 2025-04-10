@@ -12,7 +12,7 @@ class NlpService {
     List<VideoAnalysisResult> results = [];
     for (var item in youtubeItems) {
       // Use the video title for keyword extraction and analysis
-      List<String> titleKeywords = TextAnalyzer.extractKeywords(item.title);
+      List<String> titleKeywords = await TextAnalyzer.extractKeywords(item.title);
 
       // Use the predefined keywords list from YoutubeData if available and not empty
       List<String> sourceKeywords = item.keywords.isNotEmpty ? item.keywords : titleKeywords;
