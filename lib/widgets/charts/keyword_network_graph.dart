@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:collection';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'; // Import for DragStartBehavior
 import '../../models/video_analysis_result.dart';
 
 import '../../widgets/app_theme.dart';
@@ -44,6 +45,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
   Offset _dragOffset = Offset.zero;
   bool _isDraggingNode = false;
   double _lastCalculatedMaxConnections = 1.0; // Cache max connections
+  bool _needsPositionInitialization = true; // Flag to initialize positions
 
   @override
   void initState() {
@@ -58,6 +60,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
       // Clear positions and rebuild graph when data changes
       nodePositions.clear();
       _buildGraph();
+      _needsPositionInitialization = true; // Mark for re-initialization
     }
   }
 
@@ -79,7 +82,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
 
     nodeDistances[_centralNode!] = 0;
     queue.add(Pair(_centralNode!, 0));
-    visited.add(_centralNode!);
+    visited.add(_centralNode!); // Mark central node as visited immediately
 
     while (queue.isNotEmpty) {
       Pair<String, int> current = queue.removeFirst();
@@ -98,7 +101,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
         }
       }
     }
-    // Assign default distance to unreached nodes
+    // Assign default distance to unreached nodes (including those filtered out)
     for (var keyword in topKeywords) {
       nodeDistances.putIfAbsent(keyword, () => -1);
     }
@@ -123,6 +126,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
 
     // Step 1: Collect keywords, scores, frequencies
     for (var result in widget.analysisResults) {
+      // Use a Set to track unique keywords within this video efficiently
       Set<String> keywordsInVideo = {};
       for (var ks in result.keywords) {
         final keyword = ks.keyword;
@@ -132,7 +136,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
       }
     }
 
-    // Filter infrequent keywords
+    // Filter infrequent keywords BEFORE calculating co-occurrences
     final filteredKeywords = keywordFrequency.entries
         .where((entry) => entry.value >= minKeywordFreq)
         .map((e) => e.key)
@@ -172,19 +176,20 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
     }
 
     // Step 4: Find central node and top keywords
+    // Consider only filtered keywords that have at least one connection to another filtered keyword
     final validKeywords = connectionCounts.entries
-        .where((e) => e.value > 0) // Consider only nodes with connections
+        .where((e) => filteredKeywords.contains(e.key) && e.value > 0)
         .map((e) => e.key)
         .toList();
 
     if (validKeywords.isNotEmpty) {
-        // Find central node among valid keywords
+        // Find central node among valid keywords based on highest connection count
          _centralNode = connectionCounts.entries
              .where((entry) => validKeywords.contains(entry.key)) // Ensure central node is valid
              .reduce((a, b) => a.value > b.value ? a : b)
              .key;
 
-        // Sort valid keywords by connection count
+        // Sort valid keywords by connection count (descending)
         var keywordEntries = connectionCounts.entries
             .where((entry) => validKeywords.contains(entry.key)) // Filter again for sorting
             .toList()
@@ -196,15 +201,17 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
             .map((e) => e.key)
             .toList();
 
-        // Cache max connections
-         _lastCalculatedMaxConnections = connectionCounts.values.isNotEmpty
-            ? connectionCounts.values.reduce(max).toDouble()
+        // Cache max connections among the topKeywords for scaling
+         _lastCalculatedMaxConnections = topKeywords.isNotEmpty
+            ? topKeywords.map((kw) => connectionCounts[kw] ?? 0).reduce(max).toDouble()
             : 1.0;
+         if (_lastCalculatedMaxConnections == 0) _lastCalculatedMaxConnections = 1.0; // Avoid division by zero
 
-        // Calculate distances from the central node
+        // Calculate distances from the central node (only for topKeywords)
         _calculateNodeDistances();
+
     } else {
-        // Handle case with no valid connections
+        // Handle case with no valid connections among filtered keywords
         _centralNode = null;
         topKeywords = [];
         _lastCalculatedMaxConnections = 1.0;
@@ -216,47 +223,165 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
     if (mounted) setState(() {});
   }
 
-  // --- Drag and Drop Handlers ---
-  void _onPanStart(DragStartDetails details) {
-    final Offset localPosition = _transformationController.toScene(details.localPosition);
-    _isDraggingNode = false; // Reset flag
+  // --- Pointer Event Handlers using Listener ---
+  void _handlePointerDown(PointerDownEvent event) {
+    // Only handle mouse clicks or touch taps for dragging nodes
+    if (event.kind != PointerDeviceKind.mouse && event.kind != PointerDeviceKind.touch) return;
 
-    // Check if drag started on a node (check from top)
+    final Offset localPosition = _transformationController.toScene(event.localPosition);
+    _isDraggingNode = false; // Reset flag initially
+
+    // Check if drag started on a node (check from top keywords)
     for (var keyword in topKeywords.reversed) {
       final nodePos = nodePositions[keyword];
       if (nodePos != null) {
         final nodeRadius = _calculateNodeRadius(keyword);
+        final distance = (localPosition - nodePos).distance;
         // Add buffer for easier grabbing
-        if ((localPosition - nodePos).distance <= nodeRadius + 15.0) { // Increased buffer slightly
+        if (distance <= nodeRadius + 15.0) { // Use buffer
           setState(() {
             _draggedKeyword = keyword;
-            // Calculate offset relative to the node's center
             _dragOffset = nodePos - localPosition;
-            _isDraggingNode = true; // Set flag
+            _isDraggingNode = true; // Set flag: We are dragging a node
           });
+          // Consider capturing the pointer ID if needed for multi-touch, but likely okay for web mouse/trackpad
           return; // Stop after finding the first node
         }
       }
     }
   }
 
-  void _onPanUpdate(DragUpdateDetails details) {
-    if (_draggedKeyword != null && nodePositions.containsKey(_draggedKeyword)) {
-       final Offset localPosition = _transformationController.toScene(details.localPosition);
-       setState(() {
-         // Update position using the calculated offset
-         nodePositions[_draggedKeyword!] = localPosition + _dragOffset;
-       });
+  void _handlePointerMove(PointerMoveEvent event) {
+    // Only handle mouse or touch movements for dragging
+    if (event.kind != PointerDeviceKind.mouse && event.kind != PointerDeviceKind.touch) return;
+
+    if (_isDraggingNode && _draggedKeyword != null && nodePositions.containsKey(_draggedKeyword)) {
+      final Offset localPosition = _transformationController.toScene(event.localPosition);
+      final newPosition = localPosition + _dragOffset;
+      setState(() {
+        // Update position using the calculated offset
+        nodePositions[_draggedKeyword!] = newPosition;
+      });
     }
   }
 
-  void _onPanEnd(DragEndDetails details) {
-    if (_draggedKeyword != null) {
+  void _handlePointerUpOrCancel(PointerEvent event) { // Handles both Up and Cancel
+    // Only handle mouse or touch release/cancel
+    if (event.kind != PointerDeviceKind.mouse && event.kind != PointerDeviceKind.touch) return;
+
+    if (_isDraggingNode) {
       setState(() {
         _draggedKeyword = null;
         _isDraggingNode = false; // Reset flag
       });
     }
+  }
+
+  // Initializes node positions if missing (randomly + force simulation)
+  void _initializeNodePositions(Size size) {
+    if (topKeywords.isEmpty) return;
+    final random = Random(42); // Consistent randomness
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = min(size.width, size.height) * 0.35;
+
+    // Position central node first if it exists and needs positioning
+    if (_centralNode != null && nodePositions[_centralNode!] == null) {
+      nodePositions[_centralNode!] = center;
+    }
+
+    // Position remaining nodes randomly only if they don\'t have a position yet
+    final nodesToPlace = topKeywords.where((k) => nodePositions[k] == null).toList();
+
+    for (var keyword in nodesToPlace) {
+      // Avoid placing central node randomly if it was already placed
+      if (keyword == _centralNode) continue;
+
+      final angle = random.nextDouble() * 2 * pi;
+      final distance = radius * (0.5 + random.nextDouble() * 0.7);
+      final x = center.dx + distance * cos(angle);
+      final y = center.dy + distance * sin(angle);
+      nodePositions[keyword] = Offset(
+        x.clamp(30.0, size.width - 30.0),
+        y.clamp(30.0, size.height - 30.0),
+      );
+    }
+  }
+
+  // Runs a simple force-directed layout simulation
+  void _runForceSimulation(Size size) {
+     if (topKeywords.isEmpty) return;
+     const iterations = 100;
+     const double repulsionConstant = 50.0;
+     const double attractionBaseConstant = 0.01;
+     const double centerAttraction = 0.005;
+     final center = Offset(size.width / 2, size.height / 2);
+
+     // Only simulate nodes that are in topKeywords and have positions
+     final keywordsToSimulate = topKeywords.where((kw) => nodePositions.containsKey(kw)).toList();
+
+     for (var i = 0; i < iterations; i++) {
+       final forces = <String, Offset>{ for (var keyword in keywordsToSimulate) keyword: Offset.zero };
+
+       // Calculate Repulsive Forces
+       for (var j = 0; j < keywordsToSimulate.length; j++) {
+         final keyword1 = keywordsToSimulate[j];
+         final pos1 = nodePositions[keyword1]!;
+         for (var k = j + 1; k < keywordsToSimulate.length; k++) {
+           final keyword2 = keywordsToSimulate[k];
+           final pos2 = nodePositions[keyword2]!;
+           final delta = pos2 - pos1;
+           final distance = delta.distance;
+           if (distance < 1.0) continue;
+           final repulsiveForceMagnitude = repulsionConstant / (distance * distance);
+           final repulsiveForce = (delta / distance) * repulsiveForceMagnitude;
+           forces[keyword1] = forces[keyword1]! - repulsiveForce;
+           forces[keyword2] = forces[keyword2]! + repulsiveForce;
+         }
+       }
+
+       // Calculate Attractive Forces
+       for (var j = 0; j < keywordsToSimulate.length; j++) {
+         final keyword1 = keywordsToSimulate[j];
+         final pos1 = nodePositions[keyword1]!;
+         final neighbors = coOccurrences[keyword1] ?? {};
+         for (var keyword2 in neighbors) {
+           if (!keywordsToSimulate.contains(keyword2)) continue;
+           if (keywordsToSimulate.indexOf(keyword1) >= keywordsToSimulate.indexOf(keyword2)) continue;
+           final pos2 = nodePositions[keyword2]!;
+           final delta = pos2 - pos1;
+           final distance = delta.distance;
+           if (distance < 1.0) continue;
+           final count = coOccurrenceCounts[keyword1]?[keyword2] ?? 1;
+           final attractionMagnitude = attractionBaseConstant * distance * (1 + count * 0.1);
+           final attractiveForce = (delta / distance) * attractionMagnitude;
+           forces[keyword1] = forces[keyword1]! + attractiveForce;
+           forces[keyword2] = forces[keyword2]! - attractiveForce;
+         }
+       }
+
+       // Apply Force towards Center
+       for (var keyword in keywordsToSimulate) {
+         if (keyword == _centralNode) continue;
+         final pos = nodePositions[keyword]!;
+         final deltaToCenter = center - pos;
+         forces[keyword] = forces[keyword]! + deltaToCenter * centerAttraction;
+       }
+
+       // Update Positions
+       for (var keyword in keywordsToSimulate) {
+         if (keyword == _centralNode) continue;
+         final pos = nodePositions[keyword]!;
+         final force = forces[keyword]!;
+         final damping = 0.5 * (1.0 - (i / iterations));
+         var newPos = pos + force * damping;
+         double padding = 30.0;
+         newPos = Offset(
+           newPos.dx.clamp(padding, size.width - padding),
+           newPos.dy.clamp(padding, size.height - padding),
+         );
+         nodePositions[keyword] = newPos;
+       }
+     }
   }
 
   @override
@@ -317,18 +442,36 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // Wrap with GestureDetector for drag handling
-                  return GestureDetector(
-                    behavior: HitTestBehavior.translucent, // Ensure hit testing works
-                    onPanStart: _onPanStart,
-                    onPanUpdate: _onPanUpdate,
-                    onPanEnd: _onPanEnd,
+                  final Size size = constraints.biggest; // Get available size
+
+                  // Initialize positions after the first layout if needed
+                  if (_needsPositionInitialization && size.isFinite && size.width > 0 && size.height > 0) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && _needsPositionInitialization) { // Double check state
+                        _initializeNodePositions(size);
+                        _runForceSimulation(size);
+                        if (mounted) { // Check mounted again before setState
+                           setState(() {
+                            _needsPositionInitialization = false;
+                           });
+                        }
+                      }
+                    });
+                  }
+
+                  // Wrap with Listener for direct pointer handling
+                  return Listener(
+                    onPointerDown: _handlePointerDown,
+                    onPointerMove: _handlePointerMove,
+                    onPointerUp: _handlePointerUpOrCancel,
+                    onPointerCancel: _handlePointerUpOrCancel, // Also reset on cancel
+                    behavior: HitTestBehavior.translucent, // Ensure hit testing works through the widget
                     child: InteractiveViewer(
                       transformationController: _transformationController,
                       boundaryMargin: const EdgeInsets.all(double.infinity), // Allow panning beyond content
                       minScale: 0.1,
                       maxScale: 4.0,
-                      // Disable InteractiveViewer's pan/scale when dragging a node
+                      // Disable InteractiveViewer's pan/scale only when dragging a node
                       panEnabled: !_isDraggingNode,
                       scaleEnabled: !_isDraggingNode,
                       // Ensure the container is large enough for drawing and panning
@@ -359,7 +502,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
                             max(constraints.maxWidth, 600),
                             max(constraints.maxHeight, 600)
                           ),
-                          // child: Container(), // No need for a child here
+                          // No explicit child needed as CustomPaint draws directly
                         ),
                       ),
                     ),
@@ -374,7 +517,6 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
   }
 }
 
-
 // --- KeywordNetworkPainter ---
 class KeywordNetworkPainter extends CustomPainter {
   final List<String> keywords;
@@ -386,6 +528,10 @@ class KeywordNetworkPainter extends CustomPainter {
   final Map<String, Offset> nodePositions; // Received from state
   final Map<String, int> nodeDistances;   // Received from state
 
+  // Local state for the painter, initialized once
+  late final Map<String, Offset> _internalPositions;
+  bool _positionsInitialized = false;
+
   KeywordNetworkPainter({
     required this.keywords,
     required this.centralNode,
@@ -393,13 +539,14 @@ class KeywordNetworkPainter extends CustomPainter {
     required this.coOccurrences,
     required this.coOccurrenceCounts,
     required this.maxConnections,
-    required this.nodePositions,
+    required this.nodePositions, // Use positions from state
     required this.nodeDistances,
   });
 
   // Consistent node radius calculation
   double _calculateNodeRadius(String keyword) {
     final connections = connectionCounts[keyword] ?? 0;
+    // Use maxConnections from the provided parameter, ensuring it's > 0
     final maxConn = maxConnections > 0 ? maxConnections : 1.0;
     return 8.0 + (connections / maxConn) * 15.0;
   }
@@ -416,7 +563,7 @@ class KeywordNetworkPainter extends CustomPainter {
     }
 
     switch (distance) {
-      case 0: // Should be central node, but as fallback
+      case 0: // Central node
         return Colors.redAccent.shade400;
       case 1: // 1 hop: Green spectrum
         return Color.lerp(Colors.lightGreen.shade300, Colors.green.shade700, normalizedConnections) ?? Colors.green;
@@ -424,7 +571,7 @@ class KeywordNetworkPainter extends CustomPainter {
         return Color.lerp(Colors.lightBlue.shade300, Colors.blue.shade700, normalizedConnections) ?? Colors.blue;
       case 3: // 3 hops: Purple spectrum
          return Color.lerp(Colors.purple.shade200, Colors.purple.shade600, normalizedConnections) ?? Colors.purple;
-      default: // 4+ hops or disconnected: Orange/Yellow spectrum
+      default: // 4+ hops or disconnected (-1): Orange/Yellow spectrum
         return Color.lerp(Colors.amber.shade300, Colors.deepOrange.shade400, normalizedConnections) ?? Colors.orange;
     }
   }
@@ -433,10 +580,9 @@ class KeywordNetworkPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (keywords.isEmpty) return;
 
-    // Initialize positions if they are missing (first paint or data change)
-    if (nodePositions.length != keywords.length) {
-      _initializeNodePositions(keywords, size);
-    }
+    // Use the nodePositions passed from the stateful widget directly
+    // No need to initialize or simulate positions within the painter anymore
+    // The stateful widget now manages the positions.
 
     // --- Draw Edges ---
     final edgePaint = Paint()
@@ -447,14 +593,14 @@ class KeywordNetworkPainter extends CustomPainter {
     final drawnEdges = <String>{}; // Prevent drawing duplicate edges
 
     for (var keyword1 in keywords) {
-      final pos1 = nodePositions[keyword1];
+      final pos1 = nodePositions[keyword1]; // Use state positions
       if (pos1 == null) continue;
 
       final neighbors = coOccurrences[keyword1] ?? {};
       for (var keyword2 in neighbors) {
-        // Only draw edge if neighbor is also in topKeywords and position exists
+        // Only draw edge if neighbor is also in topKeywords (visible) and has a position
         if (keywords.contains(keyword2)) {
-            final pos2 = nodePositions[keyword2];
+            final pos2 = nodePositions[keyword2]; // Use state positions
             if (pos2 == null) continue;
 
             // Create unique key for the edge pair to avoid duplicates
@@ -474,12 +620,12 @@ class KeywordNetworkPainter extends CustomPainter {
 
 
     // --- Draw Nodes ---
-    // Draw non-central nodes first, then central node on top
+    // Draw non-central nodes first, then central node on top for better visibility
     final nonCentralKeywords = keywords.where((k) => k != centralNode).toList();
     final centralKeywordList = (centralNode != null && keywords.contains(centralNode!)) ? [centralNode!] : <String>[];
 
     for (var keyword in nonCentralKeywords.followedBy(centralKeywordList)) {
-      final nodePos = nodePositions[keyword];
+      final nodePos = nodePositions[keyword]; // Use state positions
       if (nodePos == null) continue; // Skip if position somehow doesn't exist
 
       final isCentral = keyword == centralNode;
@@ -490,14 +636,14 @@ class KeywordNetworkPainter extends CustomPainter {
       final nodePaint = Paint()
         ..color = nodeColor
         ..style = PaintingStyle.fill;
-      // Optional: Add slight shadow to nodes
+      // Optional: Add slight shadow to nodes for depth
        canvas.drawCircle(nodePos.translate(1, 1), nodeRadius, Paint()..color = Colors.black.withOpacity(0.2)..maskFilter = MaskFilter.blur(BlurStyle.normal, 2));
       canvas.drawCircle(nodePos, nodeRadius, nodePaint);
 
 
       // Node Border
       final borderPaint = Paint()
-        ..color = isCentral ? Colors.white.withOpacity(0.9) : nodeColor.withOpacity(0.8).withAlpha(150) // Adjusted border
+        ..color = isCentral ? Colors.white.withOpacity(0.9) : nodeColor.withOpacity(0.8).withAlpha(150) // Adjusted border colors
         ..style = PaintingStyle.stroke
         ..strokeWidth = isCentral ? 1.5 : 1.0;
       canvas.drawCircle(nodePos, nodeRadius, borderPaint);
@@ -510,8 +656,8 @@ class KeywordNetworkPainter extends CustomPainter {
       final textStyle = TextStyle(
         fontSize: fontSize,
         fontWeight: isCentral ? FontWeight.bold : FontWeight.normal,
-        color: Colors.white.withOpacity(0.95), // Brighter text
-        shadows: [ // Subtle shadow for readability
+        color: Colors.white.withOpacity(0.95), // Brighter text for contrast
+        shadows: [ // Subtle shadow for readability against node color
           Shadow(
             offset: Offset(1.0, 1.0),
             blurRadius: 1.5,
@@ -527,7 +673,7 @@ class KeywordNetworkPainter extends CustomPainter {
         textAlign: TextAlign.center,
       );
 
-      textPainter.layout(maxWidth: nodeRadius * 1.8); // Ensure text fits roughly within node
+      textPainter.layout(maxWidth: nodeRadius * 1.8); // Ensure text fits roughly within node diameter
 
       // Center text inside the node
       final textOffset = Offset(
@@ -543,153 +689,13 @@ class KeywordNetworkPainter extends CustomPainter {
     }
   }
 
-   // Initializes node positions if missing (randomly + force simulation)
-   void _initializeNodePositions(List<String> keywordsToPosition, Size size) {
-     final random = Random(42); // Consistent randomness
-     final center = Offset(size.width / 2, size.height / 2);
-     // Use the smaller dimension for radius calculation, adjust multiplier
-     final radius = min(size.width, size.height) * 0.35;
-
-     // Position central node first if it exists and needs positioning
-     if (centralNode != null &&
-         keywordsToPosition.contains(centralNode!) &&
-         nodePositions[centralNode!] == null) {
-       nodePositions[centralNode!] = center;
-     }
-
-     // Position remaining nodes randomly if they don't have a position
-     final nodesToPlace = keywordsToPosition
-         .where((k) => nodePositions[k] == null)
-         .toList();
-
-     for (var keyword in nodesToPlace) {
-       // Spread nodes out more initially
-       final angle = random.nextDouble() * 2 * pi;
-       final distance = radius * (0.5 + random.nextDouble() * 0.7); // Wider initial spread
-       final x = center.dx + distance * cos(angle);
-       final y = center.dy + distance * sin(angle);
-       // Clamp positions within the canvas bounds initially
-       nodePositions[keyword] = Offset(
-           x.clamp(30.0, size.width - 30.0),
-           y.clamp(30.0, size.height - 30.0)
-       );
-     }
-
-     // Run force simulation to stabilize initial layout
-     _runForceSimulation(keywordsToPosition, size);
-   }
-
-
-   // Runs a simple force-directed layout simulation
-   void _runForceSimulation(List<String> keywordsToSimulate, Size size) {
-     const iterations = 100; // More iterations for potentially better layout
-     // Adjusted force constants
-     const double repulsionConstant = 50.0;    // Increased repulsion
-     const double attractionBaseConstant = 0.01; // Fine-tuned attraction
-     const double centerAttraction = 0.005;   // Gentle pull towards center
-
-     final center = Offset(size.width / 2, size.height / 2);
-
-     for (var i = 0; i < iterations; i++) {
-       final forces = <String, Offset>{
-         for (var keyword in keywordsToSimulate) keyword: Offset.zero
-       };
-
-       // --- Calculate Repulsive Forces ---
-        for (var j = 0; j < keywordsToSimulate.length; j++) {
-          final keyword1 = keywordsToSimulate[j];
-          final pos1 = nodePositions[keyword1];
-          if (pos1 == null) continue;
-
-          for (var k = j + 1; k < keywordsToSimulate.length; k++) {
-            final keyword2 = keywordsToSimulate[k];
-            final pos2 = nodePositions[keyword2];
-            if (pos2 == null) continue;
-
-            final delta = pos2 - pos1;
-            final distance = delta.distance;
-
-            if (distance < 1.0) continue; // Avoid extreme forces at close distance
-
-            // Repulsion force (stronger when closer)
-            final repulsiveForceMagnitude = repulsionConstant / (distance * distance); // Inverse square
-            final repulsiveForce = (delta / distance) * repulsiveForceMagnitude;
-
-            forces[keyword1] = forces[keyword1]! - repulsiveForce;
-            forces[keyword2] = forces[keyword2]! + repulsiveForce;
-          }
-        }
-
-       // --- Calculate Attractive Forces (based on co-occurrence) ---
-        for (var j = 0; j < keywordsToSimulate.length; j++) {
-          final keyword1 = keywordsToSimulate[j];
-          final pos1 = nodePositions[keyword1];
-          if (pos1 == null) continue;
-
-          // Iterate through neighbors defined by coOccurrences
-           final neighbors = coOccurrences[keyword1] ?? {};
-           for (var keyword2 in neighbors) {
-             // Only apply attraction if neighbor is also in the simulation list and has position
-             if (!keywordsToSimulate.contains(keyword2) || nodePositions[keyword2] == null) continue;
-
-             // Avoid duplicate calculations (only process j < k equivalent)
-              if (keywordsToSimulate.indexOf(keyword1) >= keywordsToSimulate.indexOf(keyword2)) continue;
-
-
-             final pos2 = nodePositions[keyword2]!;
-             final delta = pos2 - pos1;
-             final distance = delta.distance;
-
-             if (distance < 1.0) continue;
-
-             final count = coOccurrenceCounts[keyword1]?[keyword2] ?? 1;
-             // Attraction force (stronger for closer nodes, slightly influenced by count)
-             final attractionMagnitude = attractionBaseConstant * distance * (1 + count * 0.1); // Linear attraction + count boost
-             final attractiveForce = (delta / distance) * attractionMagnitude;
-
-             forces[keyword1] = forces[keyword1]! + attractiveForce;
-             forces[keyword2] = forces[keyword2]! - attractiveForce;
-           }
-        }
-
-
-       // --- Apply Force towards Center ---
-       for (var keyword in keywordsToSimulate) {
-         if (keyword == centralNode) continue; // Don't pull the central node
-         final pos = nodePositions[keyword];
-         if (pos == null) continue;
-         final deltaToCenter = center - pos;
-         forces[keyword] = forces[keyword]! + deltaToCenter * centerAttraction;
-       }
-
-       // --- Update Positions ---
-       for (var keyword in keywordsToSimulate) {
-          // Central node position is fixed during simulation
-         if (keyword == centralNode) continue;
-
-         final pos = nodePositions[keyword];
-         final force = forces[keyword];
-         if (pos == null || force == null) continue;
-
-         // Apply force with damping (reduces over iterations)
-         final damping = 0.5 * (1.0 - (i / iterations)); // Adjusted damping
-         var newPos = pos + force * damping;
-
-         // Keep nodes within bounds (add padding)
-         double padding = 30.0;
-         newPos = Offset(
-           newPos.dx.clamp(padding, size.width - padding),
-           newPos.dy.clamp(padding, size.height - padding),
-         );
-
-         nodePositions[keyword] = newPos;
-       }
-     }
-   }
+   // REMOVED: _initializeNodePositions - Now handled by the stateful widget
+   // REMOVED: _runForceSimulation - Now handled by the stateful widget
 
   @override
   bool shouldRepaint(covariant KeywordNetworkPainter oldDelegate) {
-    // Repaint only if necessary data changes
+    // Repaint if node positions, distances, keywords, max connections, or central node change.
+    // Comparing nodePositions map directly works because we're passing the state's map.
     return oldDelegate.nodePositions != nodePositions ||
            oldDelegate.nodeDistances != nodeDistances ||
            !listEquals(oldDelegate.keywords, keywords) || // Use listEquals for list comparison
@@ -702,6 +708,8 @@ class KeywordNetworkPainter extends CustomPainter {
 bool listEquals<T>(List<T>? a, List<T>? b) {
   if (a == null) return b == null;
   if (b == null || a.length != b.length) return false;
+  // Check if the lists are identical first (performance)
+  if (identical(a, b)) return true;
   for (int i = 0; i < a.length; i++) {
     if (a[i] != b[i]) {
       return false;
