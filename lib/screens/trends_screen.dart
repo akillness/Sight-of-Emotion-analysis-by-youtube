@@ -9,6 +9,8 @@ import '../widgets/charts/trends_pie_chart.dart';
 import '../widgets/charts/keyword_network_graph.dart';
 import '../widgets/charts/emotion_wave_widget.dart';
 import '../widgets/charts/emotion_weather_widget.dart';
+import '../widgets/charts/data_distribution_dashboard.dart';
+import '../widgets/charts/sentiment_comparison_table.dart';
 import '../widgets/pagination_controls.dart';
 import '../services/database_helper.dart';
 import '../widgets/app_theme.dart';
@@ -51,7 +53,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _tabController.addListener(_handleTabSelection);
     _loadTrends();
   }
@@ -610,6 +612,18 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildDataDistributionTab() {
+    return DataDistributionDashboard(
+      analysisResults: _currentAnalysisResults,
+    );
+  }
+
+  Widget _buildSentimentComparisonTab() {
+    return SentimentComparisonTable(
+      analysisResults: _currentAnalysisResults,
+    );
+  }
+
   // Helper to get color based on emotion string using AppTheme
   Color _getEmotionColor(String emotion) {
     if (emotion == 'all') return Colors.blueGrey;
@@ -726,6 +740,14 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                     icon: Icon(Icons.wb_sunny),
                     text: '감정 날씨',
                   ),
+                  Tab(
+                    icon: Icon(Icons.analytics),
+                    text: '데이터 분포',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.compare_arrows),
+                    text: '감성 비교',
+                  ),
                 ],
               ),
             ),
@@ -745,6 +767,8 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                         KeywordNetworkGraph(analysisResults: _currentAnalysisResults),
                         _buildEmotionWaveTab(),
                         _buildEmotionWeatherTab(),
+                        _buildDataDistributionTab(),
+                        _buildSentimentComparisonTab(),
                       ],
                     ),
             ),

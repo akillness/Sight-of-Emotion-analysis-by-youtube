@@ -32,6 +32,14 @@
   <title>A YouTube trends analysis application</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Drift SQL.js support for web -->
+  <script src="https://github.com/sql-js/sql.js/releases/download/v1.8.0/sql-wasm.js"></script>
+  <script>
+    // Initialize SQL.js for Drift
+    var sqlWasm = sqlWasm || {};
+    sqlWasm.wasmBinary = 'https://github.com/sql-js/sql.js/releases/download/v1.8.0/sql-wasm.wasm';
+  </script>
+
   <script>
     // The value below is injected by flutter build, do not touch.
     var serviceWorkerVersion = "{{flutter_service_worker_version}}";
