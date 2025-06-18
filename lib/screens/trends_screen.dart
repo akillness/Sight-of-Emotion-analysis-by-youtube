@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:math';
 import '../services/api_service.dart';
 import '../services/nlp_service.dart';
 import '../models/video_analysis_result.dart';
-import '../models/keyword_sentiment.dart';
 import '../models/youtube_data.dart';
 import '../widgets/charts/trends_pie_chart.dart';
 import '../widgets/charts/keyword_network_graph.dart';
+import '../widgets/charts/emotion_wave_widget.dart';
+import '../widgets/charts/emotion_weather_widget.dart';
 import '../widgets/pagination_controls.dart';
 import '../services/database_helper.dart';
 import '../widgets/app_theme.dart';
@@ -51,7 +51,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(_handleTabSelection);
     _loadTrends();
   }
@@ -578,7 +578,10 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: TrendsPieChart(trends: _trends, itemCount: 10),
+                child: TrendsPieChart(
+                  analysisResults: filteredAndSortedResults,
+                  selectedEmotionFilter: _selectedEmotionFilter,
+                ),
               ),
             ],
           ),
@@ -587,34 +590,36 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     );
   }
 
-  // Helper to get color based on emotion string
-  Color _getEmotionColor(String emotion) {
-    switch (emotion.toLowerCase()) {
-      case 'joy': return Colors.amber;
-      case 'sadness': return Colors.blue;
-      case 'anger': return Colors.red;
-      case 'surprise': return Colors.purple;
-      case 'fear': return Colors.deepPurple;
-      case 'disgust': return Colors.brown;
-      case 'neutral': return AppTheme.textColor; 
-      case 'all': return Colors.blueGrey;
-      default: return AppTheme.textColor; 
-    }
+  Widget _buildEmotionWaveTab() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: EmotionWaveWidget(
+        analysisResults: _currentAnalysisResults,
+        height: double.infinity,
+      ),
+    );
   }
 
-  // Helper to get icon based on emotion string
+  Widget _buildEmotionWeatherTab() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: EmotionWeatherWidget(
+        analysisResults: _currentAnalysisResults,
+        height: double.infinity,
+      ),
+    );
+  }
+
+  // Helper to get color based on emotion string using AppTheme
+  Color _getEmotionColor(String emotion) {
+    if (emotion == 'all') return Colors.blueGrey;
+    return AppTheme.getBasicEmotionColor(emotion);
+  }
+
+  // Helper to get icon based on emotion string using AppTheme
   IconData _getEmotionIcon(String emotion) {
-     switch (emotion.toLowerCase()) {
-      case 'joy': return Icons.sentiment_very_satisfied;
-      case 'sadness': return Icons.sentiment_very_dissatisfied;
-      case 'anger': return Icons.whatshot;
-      case 'surprise': return Icons.priority_high;
-      case 'fear': return Icons.security; // Or Icons.shield
-      case 'disgust': return Icons.sick_outlined;
-      case 'neutral': return Icons.sentiment_neutral;
-      case 'all': return Icons.list;
-      default: return Icons.question_mark;
-    }
+    if (emotion == 'all') return Icons.list;
+    return AppTheme.getEmotionIcon(emotion);
   }
 
   @override
@@ -699,6 +704,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                 labelColor: AppTheme.primaryColor,
                 unselectedLabelColor: AppTheme.textColor.withOpacity(0.7),
                 indicatorSize: TabBarIndicatorSize.tab,
+                isScrollable: true,
                 tabs: const [
                   Tab(
                     icon: Icon(Icons.table_chart_outlined),
@@ -706,11 +712,19 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                   ),
                   Tab(
                     icon: Icon(Icons.insights_outlined),
-                    text: '분석',
+                    text: '감정 분석',
                   ),
                   Tab(
                     icon: Icon(Icons.hub_outlined),
                     text: '네트워크',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.waves),
+                    text: '감정 파동',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.wb_sunny),
+                    text: '감정 날씨',
                   ),
                 ],
               ),
@@ -729,6 +743,8 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
                         _buildDataTable(context),
                         _buildAnalysisTab(),
                         KeywordNetworkGraph(analysisResults: _currentAnalysisResults),
+                        _buildEmotionWaveTab(),
+                        _buildEmotionWeatherTab(),
                       ],
                     ),
             ),

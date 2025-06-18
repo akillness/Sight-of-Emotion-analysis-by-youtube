@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/youtube_data.dart';
 import '../models/api_response.dart';
-import 'database_helper.dart';
+// import 'database_helper.dart'; // 데이터베이스 직접 호출 제거
 import 'package:flutter/foundation.dart';
 import '../config/api_keys.dart';
 
@@ -10,7 +10,7 @@ class ApiService {
   static const String _youtubeApiBaseUrl = 'https://www.googleapis.com/youtube/v3';
   static const String _regionCode = 'KR';
   static const int _maxResults = 20;
-  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  // final DatabaseHelper _dbHelper = DatabaseHelper.instance; // 데이터베이스 직접 호출 제거
   
   Future<ApiResponse> getTrends() async {
     try {
@@ -29,10 +29,10 @@ class ApiService {
           await item.extractKeywordsFromTitle();
         }
             
-        // 데이터베이스에 저장
-        for (final item in items) {
-          await _dbHelper.insertTrend(item);
-        }
+        // 데이터베이스에 저장 로직 제거
+        // for (final item in items) {
+        //   await _dbHelper.insertTrend(item);
+        // }
             
         return ApiResponse(
           items: items,
@@ -61,13 +61,15 @@ class ApiService {
   
   Future<Map<String, dynamic>> getKeywordAnalysis() async {
     print('ApiService: Fetching keyword analysis from database...');
-    final analysisData = await _dbHelper.getKeywordTrends();
-    print('ApiService: Keyword analysis data received: $analysisData');
-    return analysisData;
+    // final analysisData = await _dbHelper.getKeywordTrends(); // 데이터베이스 직접 호출 제거
+    // print('ApiService: Keyword analysis data received: $analysisData');
+    // return analysisData;
+    return {}; // 임시로 빈 맵 반환
   }
   
   Future<List<Map<String, dynamic>>> getTopTrends({int limit = 10}) async {
-    return await _dbHelper.getTopTrends(limit: limit);
+    // return await _dbHelper.getTopTrends(limit: limit); // 데이터베이스 직접 호출 제거
+    return []; // 임시로 빈 리스트 반환
   }
 
   /// 키워드로 트렌드를 검색합니다.
@@ -140,11 +142,11 @@ class ApiService {
           }
             
           // 데이터베이스에 저장
-          print('ApiService: Saving ${items.length} items to database.');
-          for (final item in items) {
-            await _dbHelper.insertTrend(item);
-          }
-          print('ApiService: Finished saving items.');
+          // print('ApiService: Saving ${items.length} items to database.');
+          // for (final item in items) {
+          //   await _dbHelper.insertTrend(item);
+          // }
+          // print('ApiService: Finished saving items.');
             
           return ApiResponse(
             items: items,
@@ -186,9 +188,9 @@ class ApiService {
     if (kDebugMode) {
       print('ApiService: Saving ${videos.length} items to database.');
     }
-    for (final video in videos) {
-      await _dbHelper.insertTrend(video);
-    }
+    // for (final video in videos) {
+    //   await _dbHelper.insertTrend(video);
+    // }
     if (kDebugMode) {
       print('ApiService: Finished saving items.');
     }

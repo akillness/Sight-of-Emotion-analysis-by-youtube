@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:collection';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart'; // Import for DragStartBehavior
 import '../../models/video_analysis_result.dart';
 
@@ -22,7 +23,8 @@ class KeywordNetworkGraph extends StatefulWidget {
   State<KeywordNetworkGraph> createState() => _KeywordNetworkGraphState();
 }
 
-class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
+class _KeywordNetworkGraphState extends State<KeywordNetworkGraph>
+    with TickerProviderStateMixin {
   // Configuration
   static const int maxNodes = 30;
   static const int minKeywordFreq = 2;
@@ -33,6 +35,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
   Map<String, double> keywordScores = {};
   Map<String, int> connectionCounts = {};
   Map<String, Map<String, int>> coOccurrenceCounts = {};
+  Map<String, String> keywordEmotions = {}; // New: emotion mapping for keywords
   String? _centralNode;
   List<String> topKeywords = [];
   Map<String, int> nodeDistances = {}; // Distance from central node
@@ -46,11 +49,52 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
   bool _isDraggingNode = false;
   double _lastCalculatedMaxConnections = 1.0; // Cache max connections
   bool _needsPositionInitialization = true; // Flag to initialize positions
+  
+  // Animation controllers
+  late AnimationController _pulseController;
+  late AnimationController _rippleController;
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _rippleAnimation;
+  String? _hoveredKeyword;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize animation controllers
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+    _rippleController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.3,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _rippleAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _rippleController,
+      curve: Curves.easeOut,
+    ));
+    
     _buildGraph();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _rippleController.dispose();
+    super.dispose();
   }
 
   @override
@@ -70,6 +114,13 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
     final maxConn = _lastCalculatedMaxConnections > 0 ? _lastCalculatedMaxConnections : 1.0;
     // Adjusted scaling for better visibility
     return 8.0 + (connections / maxConn) * 15.0;
+  }
+
+  // Get emotion-based color for keyword
+  Color _getKeywordColor(String keyword, {double opacity = 1.0}) {
+    final emotion = keywordEmotions[keyword] ?? 'neutral';
+    final intensity = (keywordScores[keyword] ?? 0.0) / 100.0; // Normalize score
+    return AppTheme.getEmotionColor(emotion, intensity.clamp(0.0, 1.0)).withOpacity(opacity);
   }
 
   // Calculates distances (hops) from the central node using BFS
@@ -114,6 +165,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
     coOccurrences = {};
     keywordScores = {};
     connectionCounts = {};
+    keywordEmotions = {}; // Reset emotion mapping
     _centralNode = null;
     topKeywords = [];
     coOccurrenceCounts = {};
@@ -124,8 +176,10 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
       return;
     }
 
-    // Step 1: Collect keywords, scores, frequencies
+    // Step 1: Collect keywords, scores, frequencies, and emotions
     for (var result in widget.analysisResults) {
+      final videoEmotion = result.overallEmotion;
+      
       // Use a Set to track unique keywords within this video efficiently
       Set<String> keywordsInVideo = {};
       for (var ks in result.keywords) {
@@ -133,6 +187,9 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
         keywordsInVideo.add(keyword);
         keywordScores[keyword] = (keywordScores[keyword] ?? 0.0) + ks.score;
         keywordFrequency[keyword] = (keywordFrequency[keyword] ?? 0) + 1;
+        
+        // Map keyword to the video's overall emotion (could be enhanced with keyword-specific emotion analysis)
+        keywordEmotions[keyword] = videoEmotion;
       }
     }
 
@@ -201,26 +258,45 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
             .map((e) => e.key)
             .toList();
 
-        // Cache max connections among the topKeywords for scaling
-         _lastCalculatedMaxConnections = topKeywords.isNotEmpty
-            ? topKeywords.map((kw) => connectionCounts[kw] ?? 0).reduce(max).toDouble()
+        // Update max connections for consistency
+        _lastCalculatedMaxConnections = keywordEntries.isNotEmpty 
+            ? keywordEntries.first.value.toDouble() 
             : 1.0;
-         if (_lastCalculatedMaxConnections == 0) _lastCalculatedMaxConnections = 1.0; // Avoid division by zero
 
-        // Calculate distances from the central node (only for topKeywords)
+        // Calculate distances from central node
         _calculateNodeDistances();
 
+        setState(() => _isGraphInitialized = true);
     } else {
-        // Handle case with no valid connections among filtered keywords
-        _centralNode = null;
-        topKeywords = [];
-        _lastCalculatedMaxConnections = 1.0;
+        setState(() => _isGraphInitialized = false);
     }
+  }
 
+  void _onKeywordHover(String? keyword) {
+    setState(() {
+      _hoveredKeyword = keyword;
+    });
+    
+    if (keyword != null) {
+      // Haptic feedback
+      HapticFeedback.selectionClick();
+      
+      // Trigger pulse animation
+      _pulseController.reset();
+      _pulseController.forward();
+    }
+  }
 
-    _isGraphInitialized = true;
-    // Trigger rebuild only if mounted
-    if (mounted) setState(() {});
+  void _onKeywordTap(String keyword) {
+    // Haptic feedback
+    HapticFeedback.mediumImpact();
+    
+    // Trigger ripple animation
+    _rippleController.reset();
+    _rippleController.forward();
+    
+    // You could add more interaction logic here
+    // For example, filtering by keyword, showing details, etc.
   }
 
   // --- Pointer Event Handlers using Listener ---
@@ -420,7 +496,7 @@ class _KeywordNetworkGraphState extends State<KeywordNetworkGraph> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               "키워드 연결망",
               style: TextStyle(
                 fontSize: 18,
@@ -530,7 +606,7 @@ class KeywordNetworkPainter extends CustomPainter {
 
   // Local state for the painter, initialized once
   late final Map<String, Offset> _internalPositions;
-  bool _positionsInitialized = false;
+  final bool _positionsInitialized = false;
 
   KeywordNetworkPainter({
     required this.keywords,
@@ -637,7 +713,7 @@ class KeywordNetworkPainter extends CustomPainter {
         ..color = nodeColor
         ..style = PaintingStyle.fill;
       // Optional: Add slight shadow to nodes for depth
-       canvas.drawCircle(nodePos.translate(1, 1), nodeRadius, Paint()..color = Colors.black.withOpacity(0.2)..maskFilter = MaskFilter.blur(BlurStyle.normal, 2));
+       canvas.drawCircle(nodePos.translate(1, 1), nodeRadius, Paint()..color = Colors.black.withOpacity(0.2)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
       canvas.drawCircle(nodePos, nodeRadius, nodePaint);
 
 
@@ -659,7 +735,7 @@ class KeywordNetworkPainter extends CustomPainter {
         color: Colors.white.withOpacity(0.95), // Brighter text for contrast
         shadows: [ // Subtle shadow for readability against node color
           Shadow(
-            offset: Offset(1.0, 1.0),
+            offset: const Offset(1.0, 1.0),
             blurRadius: 1.5,
             color: Colors.black.withOpacity(0.6),
           ),

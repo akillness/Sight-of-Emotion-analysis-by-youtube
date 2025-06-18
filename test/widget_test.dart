@@ -8,9 +8,12 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:youtube_trends_flutter/main.dart';
+import 'package:youtube_trends_flutter/models/database.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
+    final database = AppDatabase();
+    await tester.pumpWidget(MyApp(database: database));
+    await database.close();
   });
 }
