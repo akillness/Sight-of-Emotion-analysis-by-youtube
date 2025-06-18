@@ -99,7 +99,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     List<YoutubeData> sortedTrends = [];
     try {
       final response = await _apiService.searchTrends(defaultQuery);
-      sortedTrends = response.items..sort((a, b) => b.views.compareTo(a.views));
+      sortedTrends = response.items..sort((a, b) => b.likes.compareTo(a.likes));
       setState(() {
         _trends = sortedTrends;
         _totalPages = (_trends.length / _itemsPerPage).ceil();
@@ -139,7 +139,7 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
     List<YoutubeData> sortedTrends = [];
     try {
       final response = await _apiService.searchTrends(finalQuery);
-      sortedTrends = response.items..sort((a, b) => b.views.compareTo(a.views));
+      sortedTrends = response.items..sort((a, b) => b.likes.compareTo(a.likes));
       setState(() {
         _trends = sortedTrends;
         _totalPages = (_trends.length / _itemsPerPage).ceil();
