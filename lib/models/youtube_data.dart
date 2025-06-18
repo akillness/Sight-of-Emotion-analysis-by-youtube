@@ -40,10 +40,8 @@ class YoutubeData {
   // Method to extract keywords asynchronously
   Future<void> extractKeywordsFromTitle() async {
     if (keywords.isEmpty) {
-      // Get the map of keywords and scores
-      final keywordMap = await TextAnalyzer.extractKeywords(title);
-      // Extract only the keywords (keys) into a list
-      keywords = keywordMap.keys.toList();
+      // Get the list of keywords
+      keywords = await TextAnalyzer.extractKeywords(title);
     }
   }
 } 

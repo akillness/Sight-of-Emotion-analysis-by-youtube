@@ -196,20 +196,35 @@ class ApiService {
     }
   }
 
-  /// 비디오에 대한 댓글을 가져옵니다.
+  /// 비디오에 대한 댓글을 가져옵니다. (좋아요 순 상위 10개)
   Future<List<String>> getComments(String videoId) async {
     final url = Uri.parse(
-        '$_youtubeApiBaseUrl/commentThreads?part=snippet&videoId=$videoId&maxResults=100&key=$youtubeApiKey');
+        '$_youtubeApiBaseUrl/commentThreads?part=snippet&videoId=$videoId&maxResults=100&order=relevance&key=$youtubeApiKey');
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final items = data['items'] as List<dynamic>?;
-        if (items == null) return [];
-        return items.map((item) {
+        if (items == null || items.isEmpty) return [];
+        
+        // 댓글을 좋아요 수 기준으로 정렬
+        items.sort((a, b) {
+          final likeCountA = a['snippet']['topLevelComment']['snippet']['likeCount'] as int? ?? 0;
+          final likeCountB = b['snippet']['topLevelComment']['snippet']['likeCount'] as int? ?? 0;
+          return likeCountB.compareTo(likeCountA); // 내림차순 정렬
+        });
+        
+        // 상위 10개만 선택하고 댓글 텍스트 추출
+        final topComments = items.take(10).map<String>((item) {
           final snippet = item['snippet']['topLevelComment']['snippet'];
           return snippet['textDisplay'] as String;
         }).toList();
+        
+        if (kDebugMode) {
+          print('Found ${topComments.length} top comments for video $videoId');
+        }
+        
+        return topComments;
       } else {
         if (kDebugMode) {
           print(

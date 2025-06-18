@@ -85,12 +85,20 @@ class NlpService {
     // 배치 내에서도 병렬 처리
     final futures = batch.map((item) async {
       try {
-        // 모든 텍스트를 하나로 합침
-        final combinedText = [
-          item.title,
-          item.captions,
-          ...item.comments,
-        ].join(' ');
+        // 제목과 사용 가능한 추가 텍스트를 합침
+        final textParts = [item.title];
+        
+        // 캡션이 있는 경우에만 추가
+        if (item.captions.isNotEmpty) {
+          textParts.add(item.captions);
+        }
+        
+        // 댓글이 있는 경우에만 추가 (이미 상위 10개로 제한됨)
+        if (item.comments.isNotEmpty) {
+          textParts.addAll(item.comments);
+        }
+        
+        final combinedText = textParts.join(' ');
         
         // 키워드 추출과 감정 분석을 병렬로 수행
         final futures = await Future.wait([
@@ -98,27 +106,24 @@ class NlpService {
           TextAnalyzer.analyzeEmotion(combinedText).then((emotion) => {'emotion': emotion}),
         ]);
         
-        final extractedData = futures[0] as Map<String, double>;
+        final extractedKeywords = futures[0] as List<String>;
         final emotionData = futures[1] as Map<String, String>;
         final analyzedEmotion = emotionData['emotion'] ?? 'neutral';
         
-        // Create KeywordSentiment objects directly from the extracted data
-        List<KeywordSentiment> keywords = extractedData.entries.map((entry) {
-          String keyword = entry.key;
-          double score = entry.value;
+        // Create KeywordSentiment objects from the extracted keywords
+        List<KeywordSentiment> keywords = extractedKeywords.map((keyword) {
           String keywordLower = keyword.toLowerCase();
-
           Sentiment sentiment = _calculateSentimentStatic(keywordLower);
           
           return KeywordSentiment(
             keyword: keyword,
             sentiment: sentiment,
-            score: score,
+            score: 1.0, // Default score since we don't have individual scores
           );
         }).toList();
 
         // Update the item's keywords list
-        item.keywords = extractedData.keys.toList();
+        item.keywords = extractedKeywords;
 
         return VideoAnalysisResult(
           youtubeData: item, 
@@ -146,12 +151,20 @@ class NlpService {
     // 배치 내에서도 병렬 처리
     final futures = batch.map((item) async {
       try {
-        // 모든 텍스트를 하나로 합침
-        final combinedText = [
-          item.title,
-          item.captions,
-          ...item.comments,
-        ].join(' ');
+        // 제목과 사용 가능한 추가 텍스트를 합침
+        final textParts = [item.title];
+        
+        // 캡션이 있는 경우에만 추가
+        if (item.captions.isNotEmpty) {
+          textParts.add(item.captions);
+        }
+        
+        // 댓글이 있는 경우에만 추가 (이미 상위 10개로 제한됨)
+        if (item.comments.isNotEmpty) {
+          textParts.addAll(item.comments);
+        }
+        
+        final combinedText = textParts.join(' ');
 
         // 키워드 추출과 감정 분석을 병렬로 수행
         final analysisResults = await Future.wait([
@@ -159,26 +172,23 @@ class NlpService {
           TextAnalyzer.analyzeEmotion(combinedText),
         ]);
         
-        final extractedData = analysisResults[0] as Map<String, double>;
+        final extractedKeywords = analysisResults[0] as List<String>;
         final analyzedEmotion = analysisResults[1] as String;
 
-        // Create KeywordSentiment objects directly from the extracted data
-        List<KeywordSentiment> keywords = extractedData.entries.map((entry) {
-          String keyword = entry.key;
-          double score = entry.value;
+        // Create KeywordSentiment objects from the extracted keywords
+        List<KeywordSentiment> keywords = extractedKeywords.map((keyword) {
           String keywordLower = keyword.toLowerCase();
-
           Sentiment sentiment = _calculateSentiment(keywordLower);
           
           return KeywordSentiment(
             keyword: keyword,
             sentiment: sentiment,
-            score: score,
+            score: 1.0, // Default score since we don't have individual scores
           );
         }).toList();
 
         // Update the item's keywords list
-        item.keywords = extractedData.keys.toList();
+        item.keywords = extractedKeywords;
 
         return VideoAnalysisResult(
           youtubeData: item, 
