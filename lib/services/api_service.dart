@@ -185,14 +185,96 @@ class ApiService {
   }
 
   Future<void> saveVideosToDatabase(List<YoutubeData> videos) async {
-    if (kDebugMode) {
+    if (kIsWeb) {
       print('ApiService: Saving ${videos.length} items to database.');
     }
     // for (final video in videos) {
     //   await _dbHelper.insertTrend(video);
     // }
-    if (kDebugMode) {
+    if (kIsWeb) {
       print('ApiService: Finished saving items.');
+    }
+  }
+
+  /// 비디오에 대한 댓글을 가져옵니다.
+  Future<List<String>> getComments(String videoId) async {
+    final url = Uri.parse(
+        '$_youtubeApiBaseUrl/commentThreads?part=snippet&videoId=$videoId&maxResults=100&key=$youtubeApiKey');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final items = data['items'] as List<dynamic>?;
+        if (items == null) return [];
+        return items.map((item) {
+          final snippet = item['snippet']['topLevelComment']['snippet'];
+          return snippet['textDisplay'] as String;
+        }).toList();
+      } else {
+        if (kDebugMode) {
+          print(
+              'Failed to fetch comments for video $videoId: ${response.statusCode}');
+        }
+        return [];
+      }
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        print('Error fetching comments for video $videoId: $e');
+      }
+      return [];
+    }
+  }
+
+  /// 비디오에 대한 캡션(자막)을 가져옵니다.
+  Future<String> getCaptions(String videoId) async {
+    // 1. 사용 가능한 캡션 목록 가져오기
+    final listUrl = Uri.parse(
+        '$_youtubeApiBaseUrl/captions?part=snippet&videoId=$videoId&key=$youtubeApiKey');
+    try {
+      final listResponse = await http.get(listUrl);
+      if (listResponse.statusCode != 200) {
+        return ''; // 캡션 목록을 가져올 수 없음
+      }
+
+      final listData = json.decode(listResponse.body);
+      final items = listData['items'] as List<dynamic>?;
+      if (items == null || items.isEmpty) {
+        return ''; // 사용 가능한 캡션 없음
+      }
+
+      // 2. 한국어 또는 영어 캡션 ID 찾기
+      String? captionId;
+      for (var item in items) {
+        final language = item['snippet']['language'] as String;
+        if (language == 'ko' || language == 'en') {
+          captionId = item['id'] as String;
+          if (language == 'ko') break; // 한국어 우선
+        }
+      }
+
+      if (captionId == null) {
+        return ''; // 원하는 언어의 캡션 없음
+      }
+
+      // 3. 캡션 다운로드
+      final downloadUrl = Uri.parse(
+          '$_youtubeApiBaseUrl/captions/$captionId?key=$youtubeApiKey');
+      final downloadResponse = await http.get(downloadUrl);
+
+      if (downloadResponse.statusCode == 200) {
+        // 간단한 SRT/VTT 태그 제거
+        return downloadResponse.body
+            .replaceAll(RegExp(r'<[^>]*>'), '') // HTML 태그 제거
+            .replaceAll(RegExp(r'[\d:.,\s]*-->[\d:.,\s]*'), '') // 타임스탬프 제거
+            .trim();
+      } else {
+        return '';
+      }
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        print('Error fetching captions for video $videoId: $e');
+      }
+      return '';
     }
   }
 } 

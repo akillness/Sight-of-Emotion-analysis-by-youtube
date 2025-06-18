@@ -85,10 +85,17 @@ class NlpService {
     // 배치 내에서도 병렬 처리
     final futures = batch.map((item) async {
       try {
+        // 모든 텍스트를 하나로 합침
+        final combinedText = [
+          item.title,
+          item.captions,
+          ...item.comments,
+        ].join(' ');
+        
         // 키워드 추출과 감정 분석을 병렬로 수행
         final futures = await Future.wait([
           TextAnalyzer.extractKeywords(item.title),
-          TextAnalyzer.analyzeEmotion(item.title).then((emotion) => {'emotion': emotion}),
+          TextAnalyzer.analyzeEmotion(combinedText).then((emotion) => {'emotion': emotion}),
         ]);
         
         final extractedData = futures[0] as Map<String, double>;
@@ -139,10 +146,17 @@ class NlpService {
     // 배치 내에서도 병렬 처리
     final futures = batch.map((item) async {
       try {
+        // 모든 텍스트를 하나로 합침
+        final combinedText = [
+          item.title,
+          item.captions,
+          ...item.comments,
+        ].join(' ');
+
         // 키워드 추출과 감정 분석을 병렬로 수행
         final analysisResults = await Future.wait([
           TextAnalyzer.extractKeywords(item.title),
-          TextAnalyzer.analyzeEmotion(item.title),
+          TextAnalyzer.analyzeEmotion(combinedText),
         ]);
         
         final extractedData = analysisResults[0] as Map<String, double>;

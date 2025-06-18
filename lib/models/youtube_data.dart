@@ -7,6 +7,8 @@ class YoutubeData {
   final int views;
   List<String> keywords;
   final String timestamp;
+  List<String> comments;
+  String captions;
 
   YoutubeData({
     required this.title,
@@ -15,6 +17,8 @@ class YoutubeData {
     required this.views,
     required this.keywords,
     required this.timestamp,
+    this.comments = const [],
+    this.captions = '',
   });
 
   static YoutubeData fromVideoItem(Map<String, dynamic> item) {

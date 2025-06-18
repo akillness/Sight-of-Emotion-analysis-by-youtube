@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -77,7 +78,35 @@ class _TrendsScreenState extends State<TrendsScreen> with SingleTickerProviderSt
       setState(() => _currentAnalysisResults = []);
       return;
     }
-    final analysis = await _nlpService.analyzeVideoTitles(_trends);
+
+    // 데이터 복사본 생성
+    List<YoutubeData> itemsToAnalyze = List.from(_trends);
+    
+    // 댓글 및 캡션 데이터 채우기 (동시 요청 제어)
+    const maxConcurrentRequests = 5;
+    for (int i = 0; i < itemsToAnalyze.length; i += maxConcurrentRequests) {
+      final end = (i + maxConcurrentRequests < itemsToAnalyze.length) 
+          ? i + maxConcurrentRequests 
+          : itemsToAnalyze.length;
+      final batch = itemsToAnalyze.sublist(i, end);
+
+      await Future.wait(batch.map((item) async {
+        try {
+          final futures = await Future.wait([
+            _apiService.getComments(item.videoId),
+            _apiService.getCaptions(item.videoId),
+          ]);
+          item.comments = futures[0] as List<String>;
+          item.captions = futures[1] as String;
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error fetching details for ${item.videoId}: $e');
+          }
+        }
+      }));
+    }
+
+    final analysis = await _nlpService.analyzeVideoTitles(itemsToAnalyze);
     if (mounted) {
       setState(() {
         _currentAnalysisResults = analysis;
